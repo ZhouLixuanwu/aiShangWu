@@ -10,13 +10,14 @@ const { ossService } = require('../utils/oss');
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB限制
+    fileSize: 500 * 1024 * 1024, // 500MB限制
   },
   fileFilter: (req, file, cb) => {
     // 允许的文件类型
     const allowedTypes = [
       'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-      'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm'
+      'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm',
+      'video/3gpp', 'video/x-m4v', 'video/mpeg' // 添加更多视频格式
     ];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
@@ -61,7 +62,26 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
     }
 
     const file = req.file;
-    const key = ossService.generateKey(req.user.id, file.originalname);
+    
+    // 处理中文文件名：优先使用前端传递的原始文件名，否则使用 multer 解析的文件名
+    let originalName = req.body.originalName || file.originalname;
+    
+    // 尝试解码可能被编码的文件名
+    try {
+      // 如果文件名是 URL 编码的，解码它
+      if (originalName && originalName.includes('%')) {
+        originalName = decodeURIComponent(originalName);
+      }
+      // 如果文件名是 latin1 编码的中文（常见于 multipart），转换为 UTF-8
+      if (originalName && /[\x80-\xff]/.test(originalName)) {
+        originalName = Buffer.from(originalName, 'latin1').toString('utf8');
+      }
+    } catch (e) {
+      // 解码失败则使用原值
+      console.log('文件名解码失败，使用原值:', e.message);
+    }
+    
+    const key = ossService.generateKey(req.user.id, originalName);
     
     // 上传到OSS
     await ossService.uploadFile(key, file.buffer, {
@@ -71,12 +91,12 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
     // 确定文件类型
     const fileType = file.mimetype.startsWith('video/') ? 'video' : 'image';
 
-    // 保存上传记录到数据库
+    // 保存上传记录到数据库（使用处理后的中文文件名）
     const [result] = await pool.query(
       `INSERT INTO media_uploads 
        (user_id, user_name, leader_id, oss_key, file_name, file_type, file_size, upload_date)
        VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE())`,
-      [req.user.id, req.user.realName, null, key, file.originalname, fileType, file.size]
+      [req.user.id, req.user.realName, null, key, originalName, fileType, file.size]
     );
 
     // 获取用户的leader_id并更新

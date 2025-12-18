@@ -1,16 +1,21 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
   Card, Upload, Button, message, Progress, List, Tag, 
-  Image, Space, DatePicker, Statistic, Row, Col, Popconfirm, Empty
+  Image, Space, DatePicker, Statistic, Row, Col, Popconfirm, Empty,
+  Modal
 } from 'antd';
 import { 
   UploadOutlined, PictureOutlined, VideoCameraOutlined, 
   DeleteOutlined, CheckCircleOutlined, ClockCircleOutlined,
-  CameraOutlined, FolderOpenOutlined
+  CameraOutlined, FolderOpenOutlined, LoadingOutlined,
+  CloudUploadOutlined
 } from '@ant-design/icons';
-import request from '../utils/request';
+import axios from 'axios';
 import dayjs from 'dayjs';
 import VideoPlayer from '../components/VideoPlayer';
+
+// 获取API基础URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const MediaUpload = () => {
   const [uploading, setUploading] = useState(false);
@@ -20,6 +25,43 @@ const MediaUpload = () => {
   const [stats, setStats] = useState({ todayCount: 0, dailyTarget: 5, completed: false });
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [isMobile, setIsMobile] = useState(false);
+  
+  // 上传进度状态
+  const [uploadProgress, setUploadProgress] = useState({
+    visible: false,
+    percent: 0,
+    fileName: '',
+    fileSize: 0,
+    uploadedSize: 0,
+    speed: 0,
+    status: 'uploading', // 'uploading' | 'success' | 'error'
+    errorMsg: ''
+  });
+  const uploadStartTime = useRef(0);
+  const abortController = useRef(null);
+
+  // 格式化文件大小
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  // 格式化速度
+  const formatSpeed = (bytesPerSecond) => {
+    if (bytesPerSecond === 0) return '0 KB/s';
+    if (bytesPerSecond < 1024) return bytesPerSecond.toFixed(0) + ' B/s';
+    if (bytesPerSecond < 1024 * 1024) return (bytesPerSecond / 1024).toFixed(1) + ' KB/s';
+    return (bytesPerSecond / (1024 * 1024)).toFixed(2) + ' MB/s';
+  };
+
+  // 获取token的辅助函数
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
 
   // 检测是否为移动端
   useEffect(() => {
@@ -38,16 +80,18 @@ const MediaUpload = () => {
   const fetchRecords = async () => {
     setLoading(true);
     try {
-      const res = await request.get('/media/my', {
+      const res = await axios.get(`${API_BASE_URL}/media/my`, {
         params: {
           date: selectedDate.format('YYYY-MM-DD'),
           page: pagination.current,
           pageSize: pagination.pageSize
-        }
+        },
+        headers: getAuthHeaders()
       });
-      setRecords(res.data.list || []);
-      setStats(res.data.stats || { todayCount: 0, dailyTarget: 5, completed: false });
-      setPagination(prev => ({ ...prev, total: res.data.pagination.total }));
+      const data = res.data;
+      setRecords(data.data?.list || []);
+      setStats(data.data?.stats || { todayCount: 0, dailyTarget: 5, completed: false });
+      setPagination(prev => ({ ...prev, total: data.data?.pagination?.total || 0 }));
     } catch (error) {
       console.error('获取记录失败:', error);
     } finally {
@@ -67,33 +111,76 @@ const MediaUpload = () => {
       return;
     }
 
-    // 检查文件大小 (100MB)
-    if (file.size > 100 * 1024 * 1024) {
-      message.error('文件大小不能超过100MB');
+    // 检查文件大小 (500MB)
+    if (file.size > 500 * 1024 * 1024) {
+      message.error('文件大小不能超过500MB');
       onError(new Error('文件太大'));
       return;
     }
 
+    // 初始化上传进度弹窗
+    setUploadProgress({
+      visible: true,
+      percent: 0,
+      fileName: file.name,
+      fileSize: file.size,
+      uploadedSize: 0,
+      speed: 0,
+      status: 'uploading',
+      errorMsg: ''
+    });
+    uploadStartTime.current = Date.now();
     setUploading(true);
 
-    try {
-      // 创建FormData
-      const formData = new FormData();
-      formData.append('file', file);
+    // 创建取消控制器
+    abortController.current = new AbortController();
 
-      // 上传文件
-      const res = await request.post('/media/upload', formData, {
+    try {
+      // 创建FormData，使用 encodeURIComponent 处理中文文件名
+      const formData = new FormData();
+      
+      // 创建一个新的文件对象，使用编码后的文件名
+      // 同时在 FormData 中添加原始文件名（用于后端保存）
+      formData.append('file', file, file.name);
+      formData.append('originalName', file.name); // 单独传递原始文件名
+
+      // 上传文件 - 使用专门的长超时配置
+      const res = await axios.post(`${API_BASE_URL}/media/upload`, formData, {
         headers: {
-          'Content-Type': 'multipart/form-data'
+          'Content-Type': 'multipart/form-data',
+          ...getAuthHeaders()
         },
+        timeout: 30 * 60 * 1000, // 30分钟超时，适合大文件
+        signal: abortController.current.signal,
         onUploadProgress: (progressEvent) => {
           const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+          const elapsedTime = (Date.now() - uploadStartTime.current) / 1000; // 秒
+          const speed = elapsedTime > 0 ? progressEvent.loaded / elapsedTime : 0;
+          
+          setUploadProgress(prev => ({
+            ...prev,
+            percent,
+            uploadedSize: progressEvent.loaded,
+            speed
+          }));
           onProgress({ percent });
         }
       });
 
+      // 上传成功
+      setUploadProgress(prev => ({
+        ...prev,
+        percent: 100,
+        status: 'success'
+      }));
+      
       message.success('上传成功');
       onSuccess(res.data);
+      
+      // 2秒后关闭弹窗
+      setTimeout(() => {
+        setUploadProgress(prev => ({ ...prev, visible: false }));
+      }, 2000);
       
       // 刷新列表
       if (selectedDate.isSame(dayjs(), 'day')) {
@@ -102,20 +189,55 @@ const MediaUpload = () => {
 
     } catch (error) {
       console.error('上传失败:', error);
-      message.error('上传失败');
+      
+      let errorMsg = '上传失败';
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        errorMsg = '上传超时，请检查网络后重试';
+      } else if (error.name === 'CanceledError' || error.message === 'canceled') {
+        errorMsg = '上传已取消';
+      } else if (error.response?.status === 413) {
+        errorMsg = '文件太大，服务器拒绝接收';
+      } else if (error.response?.data?.message) {
+        errorMsg = error.response.data.message;
+      }
+      
+      setUploadProgress(prev => ({
+        ...prev,
+        status: 'error',
+        errorMsg
+      }));
+      
+      message.error(errorMsg);
       onError(error);
     } finally {
       setUploading(false);
     }
   };
 
+  // 取消上传
+  const handleCancelUpload = () => {
+    if (abortController.current) {
+      abortController.current.abort();
+    }
+    setUploadProgress(prev => ({ ...prev, visible: false }));
+    setUploading(false);
+  };
+
+  // 关闭上传弹窗
+  const handleCloseUploadModal = () => {
+    setUploadProgress(prev => ({ ...prev, visible: false }));
+  };
+
   const handleDelete = async (id) => {
     try {
-      await request.delete(`/media/${id}`);
+      await axios.delete(`${API_BASE_URL}/media/${id}`, {
+        headers: getAuthHeaders()
+      });
       message.success('删除成功');
       fetchRecords();
     } catch (error) {
       console.error('删除失败:', error);
+      message.error('删除失败');
     }
   };
 
@@ -363,6 +485,97 @@ const MediaUpload = () => {
           />
         )}
       </Card>
+
+      {/* 上传进度弹窗 */}
+      <Modal
+        title={null}
+        open={uploadProgress.visible}
+        footer={null}
+        closable={false}
+        maskClosable={false}
+        centered
+        width={isMobile ? '90%' : 400}
+      >
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          {uploadProgress.status === 'uploading' && (
+            <>
+              <CloudUploadOutlined style={{ fontSize: 48, color: '#1677ff', marginBottom: 16 }} />
+              <h3 style={{ marginBottom: 8 }}>正在上传...</h3>
+              <p style={{ 
+                color: '#666', 
+                marginBottom: 16, 
+                fontSize: 13,
+                wordBreak: 'break-all',
+                maxWidth: '100%'
+              }}>
+                {uploadProgress.fileName}
+              </p>
+              
+              <Progress 
+                percent={uploadProgress.percent} 
+                status="active"
+                strokeColor={{
+                  '0%': '#108ee9',
+                  '100%': '#87d068',
+                }}
+              />
+              
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                marginTop: 12,
+                color: '#999',
+                fontSize: 12
+              }}>
+                <span>
+                  {formatFileSize(uploadProgress.uploadedSize)} / {formatFileSize(uploadProgress.fileSize)}
+                </span>
+                <span>{formatSpeed(uploadProgress.speed)}</span>
+              </div>
+              
+              <Button 
+                type="default" 
+                onClick={handleCancelUpload}
+                style={{ marginTop: 20 }}
+              >
+                取消上传
+              </Button>
+            </>
+          )}
+          
+          {uploadProgress.status === 'success' && (
+            <>
+              <CheckCircleOutlined style={{ fontSize: 48, color: '#52c41a', marginBottom: 16 }} />
+              <h3 style={{ color: '#52c41a' }}>上传成功！</h3>
+              <p style={{ color: '#666', fontSize: 13 }}>{uploadProgress.fileName}</p>
+            </>
+          )}
+          
+          {uploadProgress.status === 'error' && (
+            <>
+              <div style={{ 
+                width: 48, 
+                height: 48, 
+                borderRadius: '50%', 
+                background: '#ff4d4f', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                margin: '0 auto 16px'
+              }}>
+                <span style={{ color: '#fff', fontSize: 24 }}>!</span>
+              </div>
+              <h3 style={{ color: '#ff4d4f' }}>上传失败</h3>
+              <p style={{ color: '#666', fontSize: 13, marginBottom: 16 }}>
+                {uploadProgress.errorMsg}
+              </p>
+              <Button type="primary" onClick={handleCloseUploadModal}>
+                知道了
+              </Button>
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 };
