@@ -13,6 +13,8 @@ import TeamLogs from './pages/TeamLogs';
 import Users from './pages/Users';
 import MediaUpload from './pages/MediaUpload';
 import TeamMedia from './pages/TeamMedia';
+import CopywritingLibrary from './pages/CopywritingLibrary';
+import MediaCopywriting from './pages/MediaCopywriting';
 
 // 路由守卫组件
 const PrivateRoute = ({ children, permission }) => {
@@ -109,6 +111,20 @@ function App() {
           <Route path="team-media" element={
             <PrivateRoute permission="media_view_team">
               <TeamMedia />
+            </PrivateRoute>
+          } />
+          
+          {/* 文案库 */}
+          <Route path="copywriting-library" element={
+            <PrivateRoute permission="copywriting_manage">
+              <CopywritingLibrary />
+            </PrivateRoute>
+          } />
+          
+          {/* 素材文案 */}
+          <Route path="media-copywriting" element={
+            <PrivateRoute permission="copywriting_edit">
+              <MediaCopywriting />
             </PrivateRoute>
           } />
         </Route>

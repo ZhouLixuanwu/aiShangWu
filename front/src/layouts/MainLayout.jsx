@@ -17,7 +17,9 @@ import {
   EyeOutlined,
   PictureOutlined,
   UploadOutlined,
-  CloseOutlined
+  CloseOutlined,
+  BookOutlined,
+  FormOutlined
 } from '@ant-design/icons';
 import useUserStore from '../store/userStore';
 
@@ -101,7 +103,7 @@ const MainLayout = () => {
         },
       ].filter(Boolean),
     },
-    (hasPermission('media_upload') || hasPermission('media_view_team')) && {
+    (hasPermission('media_upload') || hasPermission('media_view_team') || hasPermission('copywriting_manage') || hasPermission('copywriting_edit')) && {
       key: 'media',
       icon: <PictureOutlined />,
       label: '素材管理',
@@ -115,6 +117,16 @@ const MainLayout = () => {
           key: '/team-media',
           icon: <TeamOutlined />,
           label: '团队素材',
+        },
+        hasPermission('copywriting_manage') && {
+          key: '/copywriting-library',
+          icon: <BookOutlined />,
+          label: '文案库',
+        },
+        hasPermission('copywriting_edit') && {
+          key: '/media-copywriting',
+          icon: <FormOutlined />,
+          label: '素材文案',
         },
       ].filter(Boolean),
     },
@@ -168,7 +180,7 @@ const MainLayout = () => {
     if (path.includes('logs')) {
       return ['logs'];
     }
-    if (path.includes('media')) {
+    if (path.includes('media') || path.includes('copywriting')) {
       return ['media'];
     }
     return [];
