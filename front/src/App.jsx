@@ -13,6 +13,7 @@ import TeamLogs from './pages/TeamLogs';
 import Users from './pages/Users';
 import MediaUpload from './pages/MediaUpload';
 import TeamMedia from './pages/TeamMedia';
+import VoiceEdit from './pages/VoiceEdit';
 import CopywritingLibrary from './pages/CopywritingLibrary';
 import MediaCopywriting from './pages/MediaCopywriting';
 import PendingApprovals from './pages/PendingApprovals';
@@ -122,6 +123,12 @@ function App() {
             </PrivateRoute>
           } />
           
+          {/* 声音剪辑 */}
+          <Route path="voice-edit" element={
+            <PrivateRoute permission="voice_edit">
+              <VoiceEdit />
+            </PrivateRoute>
+          } />
           {/* 文案库 */}
           <Route path="copywriting-library" element={
             <PrivateRoute permission="copywriting_manage">

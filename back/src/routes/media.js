@@ -55,6 +55,7 @@ router.post('/upload-url', authenticateToken, async (req, res) => {
 });
 
 // 直接上传文件（后端接收文件再传OSS）
+// source 参数: 'media'(默认) = 素材上传(计入统计), 'log' = 日志图片(不计入统计)
 router.post('/upload', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -62,6 +63,7 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
     }
 
     const file = req.file;
+    const source = req.body.source || 'media'; // 默认为素材上传
     
     // 处理中文文件名：优先使用前端传递的原始文件名，否则使用 multer 解析的文件名
     let originalName = req.body.originalName || file.originalname;
@@ -91,34 +93,44 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
     // 确定文件类型
     const fileType = file.mimetype.startsWith('video/') ? 'video' : 'image';
 
-    // 保存上传记录到数据库（使用处理后的中文文件名）
-    const [result] = await pool.query(
-      `INSERT INTO media_uploads 
-       (user_id, user_name, leader_id, oss_key, file_name, file_type, file_size, upload_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE())`,
-      [req.user.id, req.user.realName, null, key, originalName, fileType, file.size]
-    );
-
-    // 获取用户的leader_id并更新
-    const [userInfo] = await pool.query(
-      'SELECT leader_id FROM users WHERE id = ?',
-      [req.user.id]
-    );
-    if (userInfo.length > 0 && userInfo[0].leader_id) {
-      await pool.query(
-        'UPDATE media_uploads SET leader_id = ? WHERE id = ?',
-        [userInfo[0].leader_id, result.insertId]
-      );
-    }
-
     const viewUrl = await ossService.generateViewUrl(key);
 
-    created(res, {
-      id: result.insertId,
-      key,
-      url: viewUrl,
-      fileType
-    }, '上传成功');
+    // 只有素材上传才保存到数据库，日志图片不计入统计
+    if (source === 'media') {
+      // 保存上传记录到数据库（使用处理后的中文文件名）
+      const [result] = await pool.query(
+        `INSERT INTO media_uploads 
+         (user_id, user_name, leader_id, oss_key, file_name, file_type, file_size, upload_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE())`,
+        [req.user.id, req.user.realName, null, key, originalName, fileType, file.size]
+      );
+
+      // 获取用户的leader_id并更新
+      const [userInfo] = await pool.query(
+        'SELECT leader_id FROM users WHERE id = ?',
+        [req.user.id]
+      );
+      if (userInfo.length > 0 && userInfo[0].leader_id) {
+        await pool.query(
+          'UPDATE media_uploads SET leader_id = ? WHERE id = ?',
+          [userInfo[0].leader_id, result.insertId]
+        );
+      }
+
+      created(res, {
+        id: result.insertId,
+        key,
+        url: viewUrl,
+        fileType
+      }, '上传成功');
+    } else {
+      // 日志图片上传，只返回URL，不保存记录
+      created(res, {
+        key,
+        url: viewUrl,
+        fileType
+      }, '上传成功');
+    }
 
   } catch (err) {
     console.error('上传文件错误:', err);

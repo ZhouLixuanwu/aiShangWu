@@ -88,6 +88,7 @@ const DailyLogs = () => {
     const formData = new FormData();
     formData.append('file', file, file.name);
     formData.append('originalName', file.name);
+    formData.append('source', 'log'); // 标记为日志图片，不计入素材上传统计
 
     // 使用 fetch 上传图片
     fetch(`${API_BASE_URL}/media/upload`, {
