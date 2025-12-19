@@ -17,7 +17,8 @@ import {
   EyeOutlined,
   PictureOutlined,
   UploadOutlined,
-  CloseOutlined
+  CloseOutlined,
+  AudioOutlined
 } from '@ant-design/icons';
 import useUserStore from '../store/userStore';
 
@@ -101,7 +102,7 @@ const MainLayout = () => {
         },
       ].filter(Boolean),
     },
-    (hasPermission('media_upload') || hasPermission('media_view_team')) && {
+    (hasPermission('media_upload') || hasPermission('media_view_team') || hasPermission('voice_edit')) && {
       key: 'media',
       icon: <PictureOutlined />,
       label: '素材管理',
@@ -115,6 +116,11 @@ const MainLayout = () => {
           key: '/team-media',
           icon: <TeamOutlined />,
           label: '团队素材',
+        },
+        hasPermission('voice_edit') && {
+          key: '/voice-edit',
+          icon: <AudioOutlined />,
+          label: '声音剪辑',
         },
       ].filter(Boolean),
     },

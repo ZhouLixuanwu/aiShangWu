@@ -13,6 +13,7 @@ import TeamLogs from './pages/TeamLogs';
 import Users from './pages/Users';
 import MediaUpload from './pages/MediaUpload';
 import TeamMedia from './pages/TeamMedia';
+import VoiceEdit from './pages/VoiceEdit';
 
 // 路由守卫组件
 const PrivateRoute = ({ children, permission }) => {
@@ -109,6 +110,13 @@ function App() {
           <Route path="team-media" element={
             <PrivateRoute permission="media_view_team">
               <TeamMedia />
+            </PrivateRoute>
+          } />
+          
+          {/* 声音剪辑 */}
+          <Route path="voice-edit" element={
+            <PrivateRoute permission="voice_edit">
+              <VoiceEdit />
             </PrivateRoute>
           } />
         </Route>
