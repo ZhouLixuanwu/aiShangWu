@@ -22,7 +22,7 @@ const MediaUpload = () => {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(dayjs());
-  const [stats, setStats] = useState({ todayCount: 0, dailyTarget: 5, completed: false });
+  const [stats, setStats] = useState({ todayCount: 0, dailyTarget: 2, completed: false });
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [isMobile, setIsMobile] = useState(false);
   
