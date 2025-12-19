@@ -284,7 +284,7 @@ const Users = () => {
         open={modalVisible}
         onOk={handleSubmit}
         onCancel={() => setModalVisible(false)}
-        width={700}
+        width={800}
       >
         <Form form={form} layout="vertical">
           <Row gutter={16}>
@@ -341,22 +341,36 @@ const Users = () => {
 
           <Form.Item name="permissions">
             <Checkbox.Group style={{ width: '100%' }}>
-              {Object.entries(groupedPermissions).map(([category, perms]) => (
-                <div key={category} style={{ marginBottom: 16 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 8, color: '#666' }}>
-                    {category}
-                  </div>
-                  <Row>
-                    {perms.map(perm => (
-                      <Col span={8} key={perm.code}>
-                        <Checkbox value={perm.code}>
-                          {perm.name}
-                        </Checkbox>
-                      </Col>
-                    ))}
-                  </Row>
-                </div>
-              ))}
+              <Row gutter={[16, 16]}>
+                {Object.entries(groupedPermissions).map(([category, perms]) => (
+                  <Col span={12} key={category}>
+                    <div style={{ 
+                      border: '1px solid #f0f0f0', 
+                      borderRadius: 8, 
+                      padding: 16,
+                      background: '#fafafa',
+                      height: '100%'
+                    }}>
+                      <div style={{ 
+                        fontWeight: 600, 
+                        marginBottom: 12, 
+                        color: '#1890ff',
+                        borderBottom: '1px solid #e8e8e8',
+                        paddingBottom: 8
+                      }}>
+                        {category}
+                      </div>
+                      <Space direction="vertical" size={8}>
+                        {perms.map(perm => (
+                          <Checkbox key={perm.code} value={perm.code}>
+                            {perm.name}
+                          </Checkbox>
+                        ))}
+                      </Space>
+                    </div>
+                  </Col>
+                ))}
+              </Row>
             </Checkbox.Group>
           </Form.Item>
         </Form>
