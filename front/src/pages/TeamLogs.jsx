@@ -4,6 +4,9 @@ import { EyeOutlined, SearchOutlined } from '@ant-design/icons';
 import request from '../utils/request';
 import dayjs from 'dayjs';
 
+// 引入wangeditor样式以正确渲染富文本内容
+import '@wangeditor/editor/dist/css/style.css';
+
 const { RangePicker } = DatePicker;
 
 const TeamLogs = () => {
@@ -67,6 +70,33 @@ const TeamLogs = () => {
     setDetailVisible(true);
   };
 
+  // 递归解码HTML实体（处理多重转义的情况）
+  const decodeHtml = (html) => {
+    if (!html) return '';
+    const textarea = document.createElement('textarea');
+    let decoded = html;
+    let prevDecoded = '';
+    
+    // 循环解码，直到没有更多需要解码的内容
+    while (decoded !== prevDecoded) {
+      prevDecoded = decoded;
+      textarea.innerHTML = decoded;
+      decoded = textarea.value;
+    }
+    
+    return decoded;
+  };
+
+  // 从HTML中提取纯文本用于表格显示
+  const stripHtml = (html) => {
+    if (!html) return '';
+    // 先解码 HTML 实体
+    const decoded = decodeHtml(html);
+    const tmp = document.createElement('div');
+    tmp.innerHTML = decoded;
+    return tmp.textContent || tmp.innerText || '';
+  };
+
   const columns = [
     {
       title: '日期',
@@ -94,7 +124,10 @@ const TeamLogs = () => {
       dataIndex: 'content',
       key: 'content',
       ellipsis: true,
-      render: (val) => val?.substring(0, 100) + (val?.length > 100 ? '...' : '')
+      render: (val) => {
+        const text = stripHtml(val);
+        return text.length > 100 ? text.substring(0, 100) + '...' : text;
+      }
     },
     {
       title: '更新时间',
@@ -164,22 +197,40 @@ const TeamLogs = () => {
         width={700}
       >
         {currentLog && (
-          <Card>
+          <div>
             <Space style={{ marginBottom: 16 }}>
               <Tag color="blue">日期: {dayjs(currentLog.log_date).format('YYYY-MM-DD')}</Tag>
               <Tag color="green">工作时长: {currentLog.work_hours} 小时</Tag>
             </Space>
-            <div style={{ 
-              whiteSpace: 'pre-wrap', 
-              lineHeight: 1.8,
-              padding: 16,
-              background: '#f5f5f5',
-              borderRadius: 8,
-              minHeight: 200
-            }}>
-              {currentLog.content}
-            </div>
-          </Card>
+            {/* 渲染富文本内容 */}
+            <div 
+              className="log-content-view"
+              style={{ 
+                lineHeight: 1.8,
+                padding: 16,
+                background: '#fafafa',
+                borderRadius: 8,
+                minHeight: 200,
+                border: '1px solid #e8e8e8',
+                overflow: 'auto',
+                wordBreak: 'break-word'
+              }}
+              dangerouslySetInnerHTML={{ __html: decodeHtml(currentLog.content) }}
+            />
+            {/* 富文本内容样式 */}
+            <style>{`
+              .log-content-view p { margin: 0 0 8px 0; }
+              .log-content-view ul, .log-content-view ol { padding-left: 20px; margin: 8px 0; }
+              .log-content-view li { margin: 4px 0; }
+              .log-content-view table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+              .log-content-view td, .log-content-view th { border: 1px solid #ddd; padding: 8px; }
+              .log-content-view blockquote { margin: 8px 0; padding: 8px 16px; border-left: 4px solid #1677ff; background: #f0f5ff; }
+              .log-content-view pre { background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto; }
+              .log-content-view code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+              .log-content-view img { max-width: 100%; height: auto; }
+              .log-content-view a { color: #1677ff; }
+            `}</style>
+          </div>
         )}
       </Modal>
     </div>
@@ -187,4 +238,3 @@ const TeamLogs = () => {
 };
 
 export default TeamLogs;
-
