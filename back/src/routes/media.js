@@ -28,7 +28,7 @@ const upload = multer({
 });
 
 // 每日达标任务量配置
-const DAILY_TARGET = 5; // 每天需要上传5个素材
+const DAILY_TARGET = 2; // 每天需要上传2个素材
 
 // 获取上传预签名URL（前端直传OSS）
 router.post('/upload-url', authenticateToken, async (req, res) => {
