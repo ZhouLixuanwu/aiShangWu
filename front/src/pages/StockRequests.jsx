@@ -182,16 +182,17 @@ const StockRequests = () => {
       <div className="page-card">
         <Result
           status="success"
-          title="操作成功！"
+          title="申请已提交！"
           subTitle={
             <div>
               <div>申请单号: {submittedNo}</div>
               <div style={{ marginTop: 8 }}>商品: {submittedSummary}</div>
+              <div style={{ marginTop: 8, color: '#faad14' }}>等待审批中...</div>
             </div>
           }
           extra={[
             <Button type="primary" key="new" onClick={handleReset}>
-              继续操作
+              继续申请
             </Button>,
           ]}
         />

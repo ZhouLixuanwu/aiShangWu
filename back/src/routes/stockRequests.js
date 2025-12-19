@@ -113,9 +113,8 @@ router.get('/pending', authenticateToken, checkPermission('stock_approve'), asyn
     const offset = (page - 1) * pageSize;
 
     const sql = `
-      SELECT sr.*, p.name as product_name, p.sku as product_sku, p.unit as product_unit, p.stock as current_stock
+      SELECT sr.*
       FROM stock_requests sr
-      LEFT JOIN products p ON sr.product_id = p.id
       WHERE sr.status = 'pending'
       ORDER BY sr.id DESC
       LIMIT ? OFFSET ?
@@ -125,6 +124,15 @@ router.get('/pending', authenticateToken, checkPermission('stock_approve'), asyn
     const [countResult] = await pool.query(
       'SELECT COUNT(*) as total FROM stock_requests WHERE status = "pending"'
     );
+
+    // 获取每个申请的商品明细
+    for (let req of requests) {
+      const [items] = await pool.query(
+        'SELECT * FROM stock_request_items WHERE request_id = ?',
+        [req.id]
+      );
+      req.items = items;
+    }
 
     paginate(res, requests, countResult[0].total, page, pageSize);
 
@@ -233,7 +241,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// 提交库存变动（无需审核，直接生效）- 支持多商品
+// 提交库存变动申请（需要审批）- 支持多商品
 router.post('/', authenticateToken, async (req, res) => {
   try {
     const { items, type, merchant, address, receiverName, receiverPhone, shippingFee, remark, salesmanId } = req.body;
@@ -268,7 +276,7 @@ router.post('/', authenticateToken, async (req, res) => {
     const productMap = {};
     products.forEach(p => { productMap[p.id] = p; });
 
-    // 检查出库时库存是否足够
+    // 检查出库时库存是否足够（提交时预检查）
     if (type === 'out') {
       for (const item of itemsList) {
         const product = productMap[item.productId];
@@ -306,20 +314,20 @@ router.post('/', authenticateToken, async (req, res) => {
     await connection.beginTransaction();
 
     try {
-      // 插入主记录（兼容保留 product_id 和 quantity 为第一个商品，同时添加 items_summary）
+      // 插入主记录（状态为 pending 待审批）
       const firstItem = itemsList[0];
       const [result] = await connection.query(
         `INSERT INTO stock_requests 
          (request_no, product_id, quantity, items_summary, type, merchant, address, receiver_name, receiver_phone, shipping_fee, remark, 
-          status, submitter_id, submitter_name, salesman_id, salesman_name, approver_id, approver_name, approved_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, ?, ?, NOW())`,
+          status, submitter_id, submitter_name, salesman_id, salesman_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
         [requestNo, firstItem.productId, totalQuantity, itemsSummary, type, merchant, address, receiverName, receiverPhone, shippingFee || 'receiver', remark, 
-         req.user.id, req.user.realName, salesmanId || null, salesmanName, req.user.id, req.user.realName]
+         req.user.id, req.user.realName, salesmanId || null, salesmanName]
       );
 
       const requestId = result.insertId;
 
-      // 插入商品明细
+      // 插入商品明细（不更新库存，等审批通过后再更新）
       for (const item of itemsList) {
         const product = productMap[item.productId];
         await connection.query(
@@ -327,21 +335,12 @@ router.post('/', authenticateToken, async (req, res) => {
            VALUES (?, ?, ?, ?, ?)`,
           [requestId, item.productId, product.name, product.unit, item.quantity]
         );
-
-        // 更新库存
-        const newStock = type === 'in' 
-          ? product.stock + item.quantity 
-          : product.stock - item.quantity;
-        await connection.query(
-          'UPDATE products SET stock = ? WHERE id = ?',
-          [newStock, item.productId]
-        );
       }
 
       await connection.commit();
       connection.release();
 
-      created(res, { id: requestId, requestNo, itemsSummary }, '操作成功，库存已更新');
+      created(res, { id: requestId, requestNo, itemsSummary }, '申请已提交，等待审批');
     } catch (err) {
       await connection.rollback();
       connection.release();
@@ -354,7 +353,7 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
-// 审批申请
+// 审批申请（支持多商品）
 router.post('/:id/approve', authenticateToken, checkPermission('stock_approve'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -376,43 +375,74 @@ router.post('/:id/approve', authenticateToken, checkPermission('stock_approve'),
     }
 
     if (approved) {
-      // 获取商品当前库存
-      const [products] = await pool.query(
-        'SELECT stock FROM products WHERE id = ?',
-        [request.product_id]
+      // 获取该申请的所有商品明细
+      const [items] = await pool.query(
+        'SELECT * FROM stock_request_items WHERE request_id = ?',
+        [id]
       );
 
-      if (products.length === 0) {
-        return error(res, '商品不存在', 404);
+      if (items.length === 0) {
+        return error(res, '该申请没有商品明细', 400);
       }
 
-      const currentStock = products[0].stock;
-      let newStock;
+      // 获取所有相关商品的当前库存
+      const productIds = items.map(item => item.product_id);
+      const [products] = await pool.query(
+        'SELECT id, stock FROM products WHERE id IN (?)',
+        [productIds]
+      );
 
-      if (request.type === 'in') {
-        newStock = currentStock + request.quantity;
-      } else {
-        newStock = currentStock - request.quantity;
-        if (newStock < 0) {
-          return error(res, '库存不足', 400);
+      const productMap = {};
+      products.forEach(p => { productMap[p.id] = p; });
+
+      // 检查出库时库存是否足够
+      if (request.type === 'out') {
+        for (const item of items) {
+          const product = productMap[item.product_id];
+          if (!product) {
+            return error(res, `商品 ${item.product_name} 不存在`, 404);
+          }
+          if (item.quantity > product.stock) {
+            return error(res, `${item.product_name} 库存不足（当前: ${product.stock}，需要: ${item.quantity}）`, 400);
+          }
         }
       }
 
-      // 更新库存
-      await pool.query(
-        'UPDATE products SET stock = ? WHERE id = ?',
-        [newStock, request.product_id]
-      );
+      // 开启事务更新库存
+      const connection = await pool.getConnection();
+      await connection.beginTransaction();
 
-      // 更新申请状态
-      await pool.query(
-        `UPDATE stock_requests SET 
-         status = 'approved', approver_id = ?, approver_name = ?, approved_at = NOW()
-         WHERE id = ?`,
-        [req.user.id, req.user.realName, id]
-      );
+      try {
+        // 更新每个商品的库存
+        for (const item of items) {
+          const product = productMap[item.product_id];
+          const newStock = request.type === 'in' 
+            ? product.stock + item.quantity 
+            : product.stock - item.quantity;
+          
+          await connection.query(
+            'UPDATE products SET stock = ? WHERE id = ?',
+            [newStock, item.product_id]
+          );
+        }
 
-      success(res, { newStock }, '审批通过');
+        // 更新申请状态
+        await connection.query(
+          `UPDATE stock_requests SET 
+           status = 'approved', approver_id = ?, approver_name = ?, approved_at = NOW()
+           WHERE id = ?`,
+          [req.user.id, req.user.realName, id]
+        );
+
+        await connection.commit();
+        connection.release();
+
+        success(res, null, '审批通过，库存已更新');
+      } catch (err) {
+        await connection.rollback();
+        connection.release();
+        throw err;
+      }
     } else {
       // 拒绝申请
       await pool.query(
@@ -428,6 +458,72 @@ router.post('/:id/approve', authenticateToken, checkPermission('stock_approve'),
   } catch (err) {
     console.error('审批申请错误:', err);
     error(res, '服务器错误', 500);
+  }
+});
+
+// 更新申请的商品数量（审批前可以修改）
+router.put('/:id/items', authenticateToken, checkPermission('stock_approve'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { items } = req.body;
+
+    if (!items || items.length === 0) {
+      return error(res, '请提供商品列表', 400);
+    }
+
+    // 检查申请是否存在且待审批
+    const [requests] = await pool.query(
+      'SELECT * FROM stock_requests WHERE id = ? AND status = "pending"',
+      [id]
+    );
+
+    if (requests.length === 0) {
+      return error(res, '申请不存在或已处理', 404);
+    }
+
+    // 开启事务
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      // 更新每个商品的数量
+      for (const item of items) {
+        if (item.quantity < 1) {
+          throw new Error('数量必须大于0');
+        }
+        await connection.query(
+          'UPDATE stock_request_items SET quantity = ? WHERE id = ? AND request_id = ?',
+          [item.quantity, item.id, id]
+        );
+      }
+
+      // 更新主表的 quantity 和 items_summary
+      const [updatedItems] = await connection.query(
+        'SELECT product_name, quantity FROM stock_request_items WHERE request_id = ?',
+        [id]
+      );
+
+      const totalQuantity = updatedItems.reduce((sum, item) => sum + item.quantity, 0);
+      const itemsSummary = updatedItems.map(item => `${item.product_name} x${item.quantity}`).join(', ');
+
+      await connection.query(
+        'UPDATE stock_requests SET quantity = ?, items_summary = ? WHERE id = ?',
+        [totalQuantity, itemsSummary, id]
+      );
+
+      await connection.commit();
+      connection.release();
+
+      success(res, null, '修改成功');
+    } catch (err) {
+      await connection.rollback();
+      connection.release();
+      throw err;
+    }
+
+  } catch (err) {
+    console.error('更新申请商品数量错误:', err);
+    error(res, err.message || '服务器错误', 500);
   }
 });
 

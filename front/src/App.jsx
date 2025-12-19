@@ -15,6 +15,7 @@ import MediaUpload from './pages/MediaUpload';
 import TeamMedia from './pages/TeamMedia';
 import CopywritingLibrary from './pages/CopywritingLibrary';
 import MediaCopywriting from './pages/MediaCopywriting';
+import PendingApprovals from './pages/PendingApprovals';
 
 // 路由守卫组件
 const PrivateRoute = ({ children, permission }) => {
@@ -70,6 +71,13 @@ function App() {
           <Route path="stock-overview" element={
             <PrivateRoute permission="stock_view_all">
               <AllApprovals />
+            </PrivateRoute>
+          } />
+          
+          {/* 待审批 */}
+          <Route path="pending-approvals" element={
+            <PrivateRoute permission="stock_approve">
+              <PendingApprovals />
             </PrivateRoute>
           } />
           

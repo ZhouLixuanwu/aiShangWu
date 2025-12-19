@@ -19,7 +19,8 @@ import {
   UploadOutlined,
   CloseOutlined,
   BookOutlined,
-  FormOutlined
+  FormOutlined,
+  AuditOutlined
 } from '@ant-design/icons';
 import useUserStore from '../store/userStore';
 
@@ -59,22 +60,27 @@ const MainLayout = () => {
       icon: <ShoppingOutlined />,
       label: '商品管理',
     },
-    hasPermission('stock_submit') && {
+    (hasPermission('stock_submit') || hasPermission('stock_approve')) && {
       key: 'stock',
       icon: <SwapOutlined />,
       label: '库存变动',
       children: [
-        {
+        hasPermission('stock_submit') && {
           key: '/stock-requests',
           icon: <EditOutlined />,
           label: '提交变动',
         },
-        {
+        hasPermission('stock_submit') && {
           key: '/my-requests',
           icon: <UnorderedListOutlined />,
           label: '我的申请',
         },
-      ],
+        hasPermission('stock_approve') && {
+          key: '/pending-approvals',
+          icon: <AuditOutlined />,
+          label: '待审批',
+        },
+      ].filter(Boolean),
     },
     hasPermission('stock_view_all') && {
       key: '/stock-overview',
@@ -174,7 +180,7 @@ const MainLayout = () => {
 
   const getOpenKeys = () => {
     const path = location.pathname;
-    if (path.includes('stock-requests') || path.includes('my-requests')) {
+    if (path.includes('stock-requests') || path.includes('my-requests') || path.includes('pending-approvals')) {
       return ['stock'];
     }
     if (path.includes('logs')) {

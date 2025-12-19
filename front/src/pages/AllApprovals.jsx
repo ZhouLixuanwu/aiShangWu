@@ -65,6 +65,33 @@ const StockOverview = () => {
       : <Tag color="blue">入库</Tag>;
   };
 
+  const getStatusTag = (status) => {
+    const statusMap = {
+      pending: { color: 'gold', text: '待审批' },
+      approved: { color: 'green', text: '已通过' },
+      rejected: { color: 'red', text: '已拒绝' }
+    };
+    const config = statusMap[status] || { color: 'default', text: status };
+    return <Tag color={config.color}>{config.text}</Tag>;
+  };
+
+  // 渲染商品列表
+  const renderItems = (record) => {
+    if (record.items && record.items.length > 0) {
+      return (
+        <Space direction="vertical" size={0}>
+          {record.items.map((item, index) => (
+            <span key={index} style={{ fontSize: 12 }}>
+              {item.product_name} x{item.quantity}
+            </span>
+          ))}
+        </Space>
+      );
+    }
+    // 兼容旧数据
+    return record.items_summary || record.product_name || '-';
+  };
+
   const columns = [
     {
       title: '单号',
@@ -81,20 +108,16 @@ const StockOverview = () => {
     },
     {
       title: '商品',
-      dataIndex: 'product_name',
-      key: 'product_name',
-      width: 130,
+      key: 'items',
+      width: 180,
+      render: (_, record) => renderItems(record)
     },
     {
-      title: '数量',
-      dataIndex: 'quantity',
-      key: 'quantity',
-      width: 80,
-      render: (val, record) => (
-        <span style={{ color: record.type === 'out' ? '#ff4d4f' : '#52c41a', fontWeight: 600 }}>
-          {record.type === 'out' ? '-' : '+'}{val}
-        </span>
-      )
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 90,
+      render: (status) => getStatusTag(status)
     },
     {
       title: '商务',
@@ -209,12 +232,27 @@ const StockOverview = () => {
           <Descriptions bordered column={2}>
             <Descriptions.Item label="单号">{currentRequest.request_no}</Descriptions.Item>
             <Descriptions.Item label="类型">{getTypeTag(currentRequest.type)}</Descriptions.Item>
-            <Descriptions.Item label="商品">{currentRequest.product_name}</Descriptions.Item>
-            <Descriptions.Item label="数量">
-              <span style={{ color: currentRequest.type === 'out' ? '#ff4d4f' : '#52c41a', fontWeight: 600 }}>
-                {currentRequest.type === 'out' ? '-' : '+'}{currentRequest.quantity} {currentRequest.product_unit || '个'}
-              </span>
+            <Descriptions.Item label="状态">{getStatusTag(currentRequest.status)}</Descriptions.Item>
+            <Descriptions.Item label="提交时间">{dayjs(currentRequest.created_at).format('YYYY-MM-DD HH:mm')}</Descriptions.Item>
+            
+            {/* 商品明细 */}
+            <Descriptions.Item label="商品明细" span={2}>
+              {currentRequest.items && currentRequest.items.length > 0 ? (
+                <Table
+                  dataSource={currentRequest.items}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                  columns={[
+                    { title: '商品', dataIndex: 'product_name', key: 'product_name' },
+                    { title: '数量', dataIndex: 'quantity', key: 'quantity', render: (v, r) => `${v} ${r.product_unit || ''}` },
+                  ]}
+                />
+              ) : (
+                currentRequest.items_summary || '-'
+              )}
             </Descriptions.Item>
+            
             <Descriptions.Item label="商务">
               <Tag color="blue">{currentRequest.submitter_name}</Tag>
             </Descriptions.Item>
@@ -230,8 +268,19 @@ const StockOverview = () => {
                 {currentRequest.shipping_fee === 'company' ? <Tag color="red">公司承担</Tag> : <Tag>到付</Tag>}
               </Descriptions.Item>
             )}
-            <Descriptions.Item label="时间">{dayjs(currentRequest.created_at).format('YYYY-MM-DD HH:mm')}</Descriptions.Item>
             <Descriptions.Item label="备注" span={2}>{currentRequest.remark || '-'}</Descriptions.Item>
+            
+            {currentRequest.status !== 'pending' && (
+              <>
+                <Descriptions.Item label="审批人">{currentRequest.approver_name || '-'}</Descriptions.Item>
+                <Descriptions.Item label="审批时间">
+                  {currentRequest.approved_at ? dayjs(currentRequest.approved_at).format('YYYY-MM-DD HH:mm') : '-'}
+                </Descriptions.Item>
+                {currentRequest.status === 'rejected' && (
+                  <Descriptions.Item label="拒绝原因" span={2}>{currentRequest.reject_reason || '-'}</Descriptions.Item>
+                )}
+              </>
+            )}
           </Descriptions>
         )}
       </Modal>
