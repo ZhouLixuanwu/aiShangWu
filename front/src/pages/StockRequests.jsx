@@ -42,10 +42,10 @@ const StockRequests = () => {
     }
   };
 
-  // 获取下属业务员列表
+  // 获取所有业务员列表（自己名下的在前面）
   const fetchSalesmen = async () => {
     try {
-      const res = await request.get('/users/my-salesmen');
+      const res = await request.get('/users/all-salesmen');
       setSalesmen(res.data || []);
     } catch (error) {
       console.error('获取业务员列表失败:', error);
@@ -252,13 +252,28 @@ const StockRequests = () => {
       label: `${p.name} - 库存: ${p.stock} ${p.unit}`
     }));
 
-  // 业务员选项
-  const salesmenOptions = salesmen.map(s => ({
-    value: s.id,
-    label: s.realName || s.username
-  }));
+  // 业务员选项（自己名下的标记★）
+  const mySalesmen = salesmen.filter(s => s.isMine);
+  const otherSalesmen = salesmen.filter(s => !s.isMine);
+  
+  const salesmenOptions = [
+    ...(mySalesmen.length > 0 ? [{
+      label: '我的业务员',
+      options: mySalesmen.map(s => ({
+        value: s.id,
+        label: `${s.realName || s.username}`
+      }))
+    }] : []),
+    ...(otherSalesmen.length > 0 ? [{
+      label: '其他业务员',
+      options: otherSalesmen.map(s => ({
+        value: s.id,
+        label: s.realName || s.username
+      }))
+    }] : [])
+  ];
 
-  // 出库时是否需要选择业务员（有下属业务员时才显示）
+  // 出库时是否需要选择业务员
   const needSelectSalesman = activeType === 'out' && salesmen.length > 0;
 
   // 当前选中商品信息

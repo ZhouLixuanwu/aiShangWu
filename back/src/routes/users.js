@@ -257,5 +257,35 @@ router.get('/my-salesmen', authenticateToken, async (req, res) => {
   }
 });
 
+// 获取所有业务员列表（自己名下的在前面）
+router.get('/all-salesmen', authenticateToken, async (req, res) => {
+  try {
+    // 查询所有业务员，自己名下的排在前面
+    const [salesmen] = await pool.query(
+      `SELECT id, username, real_name, phone, leader_id,
+              CASE WHEN leader_id = ? THEN 1 ELSE 0 END as is_mine
+       FROM users 
+       WHERE status = 1
+       AND user_type = 'salesman'
+       ORDER BY is_mine DESC, id`,
+      [req.user.id]
+    );
+
+    const formattedSalesmen = salesmen.map(s => ({
+      id: s.id,
+      username: s.username,
+      realName: s.real_name,
+      phone: s.phone,
+      isMine: s.leader_id === req.user.id
+    }));
+
+    success(res, formattedSalesmen);
+
+  } catch (err) {
+    console.error('获取所有业务员错误:', err);
+    error(res, '服务器错误', 500);
+  }
+});
+
 module.exports = router;
 
