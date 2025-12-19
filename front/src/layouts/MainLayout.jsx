@@ -111,8 +111,7 @@ const MainLayout = () => {
       ].filter(Boolean),
     },
     
-    (hasPermission('media_upload') || hasPermission('media_view_team') || hasPermission('voice_edit')) && {
-    (hasPermission('media_upload') || hasPermission('media_view_team') || hasPermission('voice_edit')) || hasPermission('copywriting_manage') || hasPermission('copywriting_edit')) && {
+    (hasPermission('media_upload') || hasPermission('media_view_team') || hasPermission('voice_edit') || hasPermission('copywriting_manage') || hasPermission('copywriting_edit')) && {
       key: 'media',
       icon: <PictureOutlined />,
       label: '素材管理',
@@ -131,6 +130,7 @@ const MainLayout = () => {
           key: '/voice-edit',
           icon: <AudioOutlined />,
           label: '声音剪辑',
+        },
         hasPermission('copywriting_manage') && {
           key: '/copywriting-library',
           icon: <BookOutlined />,

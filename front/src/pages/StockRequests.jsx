@@ -3,7 +3,7 @@ import {
   Form, Select, InputNumber, Input, Button, Card, 
   message, Result, Divider, Space, Empty, Radio, Table, Tag
 } from 'antd';
-import { SendOutlined, ShoppingOutlined, PlusCircleOutlined, MinusCircleOutlined, UserOutlined, EnvironmentOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { SendOutlined, ShoppingOutlined, PlusCircleOutlined, MinusCircleOutlined, UserOutlined, EnvironmentOutlined, DeleteOutlined, PlusOutlined, GiftOutlined } from '@ant-design/icons';
 import request from '../utils/request';
 import useUserStore from '../store/userStore';
 
@@ -27,6 +27,7 @@ const StockRequests = () => {
   // 权限检查
   const canAdd = hasPermission('stock_add');
   const canReduce = hasPermission('stock_reduce');
+  const canSelfPurchase = hasPermission('stock_reduce'); // 自购立牌复用出库权限
 
   useEffect(() => {
     fetchProducts();
@@ -107,7 +108,8 @@ const StockRequests = () => {
       message.error('请选择操作类型');
       return;
     }
-    if (selectedItems.length === 0) {
+    // 自购立牌不需要商品，其他类型需要
+    if (activeType !== 'self_purchase' && selectedItems.length === 0) {
       message.error('请至少添加一个商品');
       return;
     }
@@ -125,10 +127,6 @@ const StockRequests = () => {
     setLoading(true);
     try {
       const submitData = {
-        items: selectedItems.map(item => ({
-          productId: item.productId,
-          quantity: item.quantity
-        })),
         type: activeType,
         merchant: values.merchant,
         address: values.address,
@@ -138,15 +136,25 @@ const StockRequests = () => {
         remark: values.remark
       };
       
-      // 出库时添加业务员ID
-      if (activeType === 'out' && values.salesmanId) {
+      // 自购立牌不需要商品列表，但需要数量
+      if (activeType === 'self_purchase') {
+        submitData.quantity = values.selfPurchaseQuantity || 1;
+      } else {
+        submitData.items = selectedItems.map(item => ({
+          productId: item.productId,
+          quantity: item.quantity
+        }));
+      }
+      
+      // 出库或自购立牌时添加业务员ID
+      if ((activeType === 'out' || activeType === 'self_purchase') && values.salesmanId) {
         submitData.salesmanId = values.salesmanId;
       }
       
       const res = await request.post('/stock-requests', submitData);
       
       setSubmittedNo(res.data.requestNo);
-      setSubmittedSummary(res.data.itemsSummary);
+      setSubmittedSummary(res.data.itemsSummary || '自购立牌');
       setSubmitted(true);
       message.success('操作成功');
     } catch (error) {
@@ -201,7 +209,7 @@ const StockRequests = () => {
   }
 
   // 没有任何权限
-  if (!canAdd && !canReduce) {
+  if (!canAdd && !canReduce && !canSelfPurchase) {
     return (
       <div className="page-card">
         <Empty description="您没有物料增减权限，请联系管理员" />
@@ -216,7 +224,7 @@ const StockRequests = () => {
         <div className="page-card-header">
           <span className="page-card-title">库存变动</span>
         </div>
-        <div style={{ display: 'flex', gap: 24, justifyContent: 'center', padding: '40px 0' }}>
+        <div style={{ display: 'flex', gap: 24, justifyContent: 'center', padding: '40px 0', flexWrap: 'wrap' }}>
           {canReduce && (
             <Card 
               hoverable 
@@ -237,6 +245,17 @@ const StockRequests = () => {
               <PlusCircleOutlined style={{ fontSize: 48, color: '#52c41a', marginBottom: 16 }} />
               <h3 style={{ margin: 0 }}>入库（增加库存）</h3>
               <p style={{ color: '#999', marginTop: 8 }}>采购、退货入库等</p>
+            </Card>
+          )}
+          {canSelfPurchase && (
+            <Card 
+              hoverable 
+              style={{ width: 240, textAlign: 'center' }}
+              onClick={() => handleSelectType('self_purchase')}
+            >
+              <GiftOutlined style={{ fontSize: 48, color: '#722ed1', marginBottom: 16 }} />
+              <h3 style={{ margin: 0 }}>自购立牌</h3>
+              <p style={{ color: '#999', marginTop: 8 }}>商家自购立牌，不占库存</p>
             </Card>
           )}
         </div>
@@ -273,8 +292,8 @@ const StockRequests = () => {
     }] : [])
   ];
 
-  // 出库时是否需要选择业务员
-  const needSelectSalesman = activeType === 'out' && salesmen.length > 0;
+  // 出库或自购立牌时需要选择业务员
+  const needSelectSalesman = (activeType === 'out' || activeType === 'self_purchase') && salesmen.length > 0;
 
   // 当前选中商品信息
   const currentProduct = products.find(p => p.id === currentProductId);
@@ -332,6 +351,8 @@ const StockRequests = () => {
           <span className="page-card-title">
             {activeType === 'out' ? (
               <><MinusCircleOutlined style={{ color: '#ff4d4f' }} /> 出库（减少库存）</>
+            ) : activeType === 'self_purchase' ? (
+              <><GiftOutlined style={{ color: '#722ed1' }} /> 自购立牌</>
             ) : (
               <><PlusCircleOutlined style={{ color: '#52c41a' }} /> 入库（增加库存）</>
             )}
@@ -364,77 +385,97 @@ const StockRequests = () => {
             </Form.Item>
           )}
 
-          {/* 商品选择区域 */}
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ marginBottom: 8, fontWeight: 500 }}>
-              <ShoppingOutlined /> 选择商品（可多选）
-            </div>
-            
-            {/* 已选商品列表 */}
-            {selectedItems.length > 0 && (
-              <Table
-                columns={itemColumns}
-                dataSource={selectedItems}
-                rowKey="productId"
-                pagination={false}
-                size="small"
-                style={{ marginBottom: 16 }}
-                summary={() => (
-                  <Table.Summary>
-                    <Table.Summary.Row>
-                      <Table.Summary.Cell index={0}>
-                        <strong>合计</strong>
-                      </Table.Summary.Cell>
-                      <Table.Summary.Cell index={1}>
-                        <Tag color="blue">{selectedItems.length} 种商品</Tag>
-                      </Table.Summary.Cell>
-                      <Table.Summary.Cell index={2}>
-                        <strong>{selectedItems.reduce((sum, item) => sum + item.quantity, 0)}</strong> 件
-                      </Table.Summary.Cell>
-                      <Table.Summary.Cell index={3} />
-                    </Table.Summary.Row>
-                  </Table.Summary>
-                )}
-              />
-            )}
+          {/* 商品选择区域 - 自购立牌不需要 */}
+          {activeType !== 'self_purchase' && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ marginBottom: 8, fontWeight: 500 }}>
+                <ShoppingOutlined /> 选择商品（可多选）
+              </div>
+              
+              {/* 已选商品列表 */}
+              {selectedItems.length > 0 && (
+                <Table
+                  columns={itemColumns}
+                  dataSource={selectedItems}
+                  rowKey="productId"
+                  pagination={false}
+                  size="small"
+                  style={{ marginBottom: 16 }}
+                  summary={() => (
+                    <Table.Summary>
+                      <Table.Summary.Row>
+                        <Table.Summary.Cell index={0}>
+                          <strong>合计</strong>
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={1}>
+                          <Tag color="blue">{selectedItems.length} 种商品</Tag>
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={2}>
+                          <strong>{selectedItems.reduce((sum, item) => sum + item.quantity, 0)}</strong> 件
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={3} />
+                      </Table.Summary.Row>
+                    </Table.Summary>
+                  )}
+                />
+              )}
 
-            {/* 添加商品 */}
-            <Card size="small" style={{ background: '#fafafa' }}>
-              <Space wrap style={{ width: '100%' }}>
-                <Select
-                  showSearch
-                  placeholder="搜索选择商品"
-                  optionFilterProp="label"
-                  value={currentProductId}
-                  onChange={setCurrentProductId}
-                  options={productOptions}
-                  style={{ width: 280 }}
-                  filterOption={(input, option) =>
-                    (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                  }
-                />
-                <InputNumber 
-                  min={1} 
-                  value={currentQuantity}
-                  onChange={setCurrentQuantity}
-                  placeholder="数量"
-                  style={{ width: 100 }}
-                />
-                {currentProduct && (
-                  <span style={{ color: '#999' }}>
-                    库存: {currentProduct.stock} {currentProduct.unit}
-                  </span>
-                )}
-                <Button 
-                  type="primary" 
-                  icon={<PlusOutlined />}
-                  onClick={handleAddItem}
-                >
-                  添加
-                </Button>
-              </Space>
-            </Card>
-          </div>
+              {/* 添加商品 */}
+              <Card size="small" style={{ background: '#fafafa' }}>
+                <Space wrap style={{ width: '100%' }}>
+                  <Select
+                    showSearch
+                    placeholder="搜索选择商品"
+                    optionFilterProp="label"
+                    value={currentProductId}
+                    onChange={setCurrentProductId}
+                    options={productOptions}
+                    style={{ width: 280 }}
+                    filterOption={(input, option) =>
+                      (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                    }
+                  />
+                  <InputNumber 
+                    min={1} 
+                    value={currentQuantity}
+                    onChange={setCurrentQuantity}
+                    placeholder="数量"
+                    style={{ width: 100 }}
+                  />
+                  {currentProduct && (
+                    <span style={{ color: '#999' }}>
+                      库存: {currentProduct.stock} {currentProduct.unit}
+                    </span>
+                  )}
+                  <Button 
+                    type="primary" 
+                    icon={<PlusOutlined />}
+                    onClick={handleAddItem}
+                  >
+                    添加
+                  </Button>
+                </Space>
+              </Card>
+            </div>
+          )}
+
+          {/* 自购立牌说明和数量 */}
+          {activeType === 'self_purchase' && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ padding: 16, background: '#f5f0ff', borderRadius: 8, border: '1px solid #d3adf7', marginBottom: 16 }}>
+                <GiftOutlined style={{ color: '#722ed1', marginRight: 8 }} />
+                <span style={{ color: '#722ed1' }}>自购立牌：商家自行购买立牌，不占用库存。审批通过后需填写快递单号。</span>
+              </div>
+              <Form.Item 
+                name="selfPurchaseQuantity" 
+                label="立牌数量" 
+                rules={[{ required: true, message: '请输入立牌数量' }]}
+                initialValue={1}
+              >
+                <InputNumber min={1} placeholder="数量" style={{ width: 150 }} addonAfter="个" />
+              </Form.Item>
+            </div>
+          )}
 
           <Divider><EnvironmentOutlined /> 收货信息</Divider>
 
@@ -454,7 +495,7 @@ const StockRequests = () => {
             <Input placeholder="收件人电话" />
           </Form.Item>
 
-          {activeType === 'out' && (
+          {(activeType === 'out' || activeType === 'self_purchase') && (
             <Form.Item name="shippingFee" label="邮费承担" initialValue="receiver">
               <Radio.Group>
                 <Radio.Button value="receiver">到付（客户承担）</Radio.Button>
@@ -479,10 +520,11 @@ const StockRequests = () => {
               size="large"
               block
               danger={activeType === 'out'}
-              disabled={selectedItems.length === 0}
+              style={activeType === 'self_purchase' ? { background: '#722ed1', borderColor: '#722ed1' } : {}}
+              disabled={activeType !== 'self_purchase' && selectedItems.length === 0}
             >
-              {activeType === 'out' ? '确认出库' : '确认入库'}
-              {selectedItems.length > 0 && ` (${selectedItems.length}种商品)`}
+              {activeType === 'out' ? '确认出库' : activeType === 'self_purchase' ? '提交自购立牌申请' : '确认入库'}
+              {activeType !== 'self_purchase' && selectedItems.length > 0 && ` (${selectedItems.length}种商品)`}
             </Button>
           </Form.Item>
         </Form>

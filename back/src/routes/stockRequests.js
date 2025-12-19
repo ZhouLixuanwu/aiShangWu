@@ -148,19 +148,22 @@ router.get('/approved', authenticateToken, checkPermission('shipping_manage', 's
     const { page = 1, pageSize = 20, shippingStatus, keyword } = req.query;
     const offset = (page - 1) * pageSize;
 
+    // 出库和自购立牌都需要发货
     let sql = `
       SELECT sr.*,
+             sr.receiver_name as orig_receiver_name, sr.receiver_phone as orig_receiver_phone, sr.address as orig_address,
              si.id as shipping_id, si.shipping_status, si.tracking_no, si.courier_company,
-             si.shipping_address, si.receiver_name, si.receiver_phone, si.shipped_at, si.remark as shipping_remark
+             si.shipping_address, si.receiver_name as si_receiver_name, si.receiver_phone as si_receiver_phone, 
+             si.shipped_at, si.remark as shipping_remark
       FROM stock_requests sr
       LEFT JOIN shipping_info si ON sr.id = si.request_id
-      WHERE sr.status = 'approved' AND sr.type = 'out'
+      WHERE sr.status = 'approved' AND sr.type IN ('out', 'self_purchase')
     `;
     let countSql = `
       SELECT COUNT(*) as total
       FROM stock_requests sr
       LEFT JOIN shipping_info si ON sr.id = si.request_id
-      WHERE sr.status = 'approved' AND sr.type = 'out'
+      WHERE sr.status = 'approved' AND sr.type IN ('out', 'self_purchase')
     `;
     const params = [];
     const countParams = [];
@@ -241,11 +244,48 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// 提交库存变动申请（需要审批）- 支持多商品
+// 提交库存变动申请（需要审批）- 支持多商品和自购立牌
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { items, type, merchant, address, receiverName, receiverPhone, shippingFee, remark, salesmanId } = req.body;
+    const { items, type, merchant, address, receiverName, receiverPhone, shippingFee, remark, salesmanId, quantity } = req.body;
     
+    // 自购立牌类型不需要商品
+    if (type === 'self_purchase') {
+      // 检查权限（复用出库权限）
+      if (!req.user.permissions.includes('stock_reduce')) {
+        return error(res, '您没有自购立牌权限', 403);
+      }
+
+      const selfPurchaseQuantity = quantity || 1;
+
+      // 如果指定了业务员，获取业务员姓名
+      let salesmanName = null;
+      if (salesmanId) {
+        const [salesmanResult] = await pool.query(
+          'SELECT real_name FROM users WHERE id = ?',
+          [salesmanId]
+        );
+        if (salesmanResult.length > 0) {
+          salesmanName = salesmanResult[0].real_name;
+        }
+      }
+
+      const requestNo = generateRequestNo();
+      const itemsSummary = `自购立牌 x${selfPurchaseQuantity}`;
+
+      // 插入主记录（状态为 pending 待审批）
+      const [result] = await pool.query(
+        `INSERT INTO stock_requests 
+         (request_no, product_id, quantity, items_summary, type, merchant, address, receiver_name, receiver_phone, shipping_fee, remark, 
+          status, submitter_id, submitter_name, salesman_id, salesman_name)
+         VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
+        [requestNo, selfPurchaseQuantity, itemsSummary, type, merchant, address, receiverName, receiverPhone, shippingFee || 'receiver', remark, 
+         req.user.id, req.user.realName, salesmanId || null, salesmanName]
+      );
+
+      return created(res, { id: result.insertId, requestNo, itemsSummary }, '自购立牌申请已提交，等待审批');
+    }
+
     // 兼容旧接口：如果传的是单个 productId，转换为 items 数组
     let itemsList = items;
     if (!items && req.body.productId) {
@@ -353,7 +393,7 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
-// 审批申请（支持多商品）
+// 审批申请（支持多商品和自购立牌）
 router.post('/:id/approve', authenticateToken, checkPermission('stock_approve'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -375,6 +415,17 @@ router.post('/:id/approve', authenticateToken, checkPermission('stock_approve'),
     }
 
     if (approved) {
+      // 自购立牌不需要更新库存，直接审批通过
+      if (request.type === 'self_purchase') {
+        await pool.query(
+          `UPDATE stock_requests SET 
+           status = 'approved', approver_id = ?, approver_name = ?, approved_at = NOW()
+           WHERE id = ?`,
+          [req.user.id, req.user.realName, id]
+        );
+        return success(res, null, '审批通过，等待发货');
+      }
+
       // 获取该申请的所有商品明细
       const [items] = await pool.query(
         'SELECT * FROM stock_request_items WHERE request_id = ?',

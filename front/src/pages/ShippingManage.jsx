@@ -54,13 +54,15 @@ const ShippingManage = () => {
 
   const showEdit = (record) => {
     setCurrentRequest(record);
+    // 优先使用原始申请中的收货信息，如果发货信息已填写则用发货信息
     form.setFieldsValue({
       shippingStatus: record.shipping_status || 'pending',
       trackingNo: record.tracking_no,
       courierCompany: record.courier_company,
-      shippingAddress: record.shipping_address || record.address,
-      receiverName: record.receiver_name,
-      receiverPhone: record.receiver_phone,
+      // 使用后端返回的原始地址和收货人信息
+      shippingAddress: record.shipping_address || record.orig_address || record.address,
+      receiverName: record.si_receiver_name || record.orig_receiver_name || record.receiver_name,
+      receiverPhone: record.si_receiver_phone || record.orig_receiver_phone || record.receiver_phone,
       remark: record.shipping_remark
     });
     setEditVisible(true);
@@ -89,8 +91,19 @@ const ShippingManage = () => {
     return <Tag color={config.color}>{config.text}</Tag>;
   };
 
+  // 获取类型标签
+  const getTypeTag = (type) => {
+    if (type === 'out') return <Tag color="orange">出库</Tag>;
+    if (type === 'self_purchase') return <Tag color="purple">自购立牌</Tag>;
+    return <Tag color="blue">入库</Tag>;
+  };
+
   // 渲染商品列表
   const renderItems = (record) => {
+    // 自购立牌显示数量
+    if (record.type === 'self_purchase') {
+      return <span style={{ color: '#722ed1' }}>自购立牌 x{record.quantity}</span>;
+    }
     if (record.items && record.items.length > 0) {
       return (
         <Space direction="vertical" size={0}>
@@ -107,11 +120,18 @@ const ShippingManage = () => {
   };
 
   const columns = [
+    // {
+    //   title: '申请单号',
+    //   dataIndex: 'request_no',
+    //   key: 'request_no',
+    //   width: 150,
+    // },
     {
-      title: '申请单号',
-      dataIndex: 'request_no',
-      key: 'request_no',
-      width: 150,
+      title: '类型',
+      dataIndex: 'type',
+      key: 'type',
+      width: 90,
+      render: (type) => getTypeTag(type)
     },
     {
       title: '商品',
@@ -139,6 +159,17 @@ const ShippingManage = () => {
       key: 'merchant',
       width: 100,
       render: (val) => val || '-'
+    },
+    {
+      title: '收货人',
+      key: 'receiver_info',
+      width: 120,
+      render: (_, record) => (
+        <div style={{ fontSize: 12 }}>
+          <div>{record.orig_receiver_name || record.receiver_name || '-'}</div>
+          <div style={{ color: '#999' }}>{record.orig_receiver_phone || record.receiver_phone || '-'}</div>
+        </div>
+      )
     },
     {
       title: '邮费',
@@ -170,8 +201,8 @@ const ShippingManage = () => {
           <Button type="link" icon={<EyeOutlined />} onClick={() => showDetail(record)}>
             详情
           </Button>
-          <Button type="link" icon={<EditOutlined />} onClick={() => showEdit(record)}>
-            填写
+          <Button type="primary" size="small" icon={<EditOutlined />} onClick={() => showEdit(record)}>
+            发货
           </Button>
         </Space>
       )
@@ -218,7 +249,7 @@ const ShippingManage = () => {
           showTotal: (total) => `共 ${total} 条`
         }}
         onChange={(pag) => setPagination(prev => ({ ...prev, current: pag.current, pageSize: pag.pageSize }))}
-        scroll={{ x: 1300 }}
+        scroll={{ x: 1400 }}
       />
 
       <Modal
@@ -230,26 +261,31 @@ const ShippingManage = () => {
       >
         {currentRequest && (
           <Descriptions bordered column={2}>
-            <Descriptions.Item label="申请单号">{currentRequest.request_no}</Descriptions.Item>
+            {/* <Descriptions.Item label="申请单号">{currentRequest.request_no}</Descriptions.Item> */}
             <Descriptions.Item label="审批时间">{currentRequest.approved_at ? dayjs(currentRequest.approved_at).format('YYYY-MM-DD HH:mm') : '-'}</Descriptions.Item>
             
-            {/* 商品明细 */}
-            <Descriptions.Item label="商品明细" span={2}>
-              {currentRequest.items && currentRequest.items.length > 0 ? (
-                <Table
-                  dataSource={currentRequest.items}
-                  rowKey="id"
-                  pagination={false}
-                  size="small"
-                  columns={[
-                    { title: '商品', dataIndex: 'product_name', key: 'product_name' },
-                    { title: '数量', dataIndex: 'quantity', key: 'quantity', render: (v, r) => `${v} ${r.product_unit || ''}` },
-                  ]}
-                />
-              ) : (
-                currentRequest.items_summary || '-'
-              )}
-            </Descriptions.Item>
+            {/* 类型 */}
+            <Descriptions.Item label="类型" span={2}>{getTypeTag(currentRequest.type)}</Descriptions.Item>
+            
+            {/* 商品明细 - 自购立牌没有商品 */}
+            {currentRequest.type !== 'self_purchase' && (
+              <Descriptions.Item label="商品明细" span={2}>
+                {currentRequest.items && currentRequest.items.length > 0 ? (
+                  <Table
+                    dataSource={currentRequest.items}
+                    rowKey="id"
+                    pagination={false}
+                    size="small"
+                    columns={[
+                      { title: '商品', dataIndex: 'product_name', key: 'product_name' },
+                      { title: '数量', dataIndex: 'quantity', key: 'quantity', render: (v, r) => `${v} ${r.product_unit || ''}` },
+                    ]}
+                  />
+                ) : (
+                  currentRequest.items_summary || '-'
+                )}
+              </Descriptions.Item>
+            )}
             
             <Descriptions.Item label="商务">
               <Tag color="blue">{currentRequest.submitter_name}</Tag>
@@ -258,9 +294,9 @@ const ShippingManage = () => {
               {currentRequest.salesman_name ? <Tag color="green">{currentRequest.salesman_name}</Tag> : '-'}
             </Descriptions.Item>
             <Descriptions.Item label="商家" span={2}>{currentRequest.merchant || '-'}</Descriptions.Item>
-            <Descriptions.Item label="收货地址" span={2}>{currentRequest.address || '-'}</Descriptions.Item>
-            <Descriptions.Item label="收件人">{currentRequest.receiver_name || '-'}</Descriptions.Item>
-            <Descriptions.Item label="联系电话">{currentRequest.receiver_phone || '-'}</Descriptions.Item>
+            <Descriptions.Item label="收货地址" span={2}>{currentRequest.orig_address || currentRequest.address || '-'}</Descriptions.Item>
+            <Descriptions.Item label="收件人">{currentRequest.orig_receiver_name || currentRequest.receiver_name || '-'}</Descriptions.Item>
+            <Descriptions.Item label="联系电话">{currentRequest.orig_receiver_phone || currentRequest.receiver_phone || '-'}</Descriptions.Item>
             <Descriptions.Item label="邮费承担">
               {currentRequest.shipping_fee === 'company' ? <Tag color="red">公司承担</Tag> : <Tag>到付</Tag>}
             </Descriptions.Item>
@@ -274,30 +310,29 @@ const ShippingManage = () => {
       </Modal>
 
       <Modal
-        title="填写发货信息"
+        title="发货"
         open={editVisible}
         onCancel={() => setEditVisible(false)}
         onOk={handleSubmit}
+        okText="确认发货"
         width={600}
       >
         {currentRequest && (
-          <div style={{ marginBottom: 16, padding: 12, background: '#f5f5f5', borderRadius: 6 }}>
-            <strong>商品：</strong>
-            {currentRequest.items && currentRequest.items.length > 0 
-              ? currentRequest.items.map(item => `${item.product_name} x${item.quantity}`).join(', ')
-              : currentRequest.items_summary || '-'
-            }
+          <div style={{ marginBottom: 16, padding: 12, background: currentRequest.type === 'self_purchase' ? '#f5f0ff' : '#f5f5f5', borderRadius: 6 }}>
+            <div><strong>{currentRequest.type === 'self_purchase' ? '类型' : '商品'}：</strong>
+            {currentRequest.type === 'self_purchase' 
+              ? <span style={{ color: '#722ed1' }}>自购立牌 x{currentRequest.quantity}</span>
+              : (currentRequest.items && currentRequest.items.length > 0 
+                  ? currentRequest.items.map(item => `${item.product_name} x${item.quantity}`).join(', ')
+                  : currentRequest.items_summary || '-')
+            }</div>
+            <div style={{ marginTop: 8, color: '#666' }}>
+              <strong>商家：</strong>{currentRequest.merchant || '-'} | 
+              <strong> 邮费：</strong>{currentRequest.shipping_fee === 'company' ? '公司承担' : '到付'}
+            </div>
           </div>
         )}
         <Form form={form} layout="vertical">
-          <Form.Item name="shippingStatus" label="发货状态">
-            <Select>
-              <Select.Option value="pending">待发货</Select.Option>
-              <Select.Option value="shipped">已发货</Select.Option>
-              <Select.Option value="delivered">已签收</Select.Option>
-            </Select>
-          </Form.Item>
-
           <Form.Item name="courierCompany" label="快递公司">
             <Select allowClear placeholder="选择快递公司">
               <Select.Option value="顺丰">顺丰</Select.Option>
@@ -312,7 +347,23 @@ const ShippingManage = () => {
           </Form.Item>
 
           <Form.Item name="trackingNo" label="快递单号">
-            <Input placeholder="请输入快递单号" />
+            <Input 
+              placeholder="请输入快递单号" 
+              onChange={(e) => {
+                // 输入快递单号时自动设置状态为已发货
+                if (e.target.value && e.target.value.trim()) {
+                  form.setFieldValue('shippingStatus', 'shipped');
+                }
+              }}
+            />
+          </Form.Item>
+
+          <Form.Item name="shippingStatus" label="发货状态">
+            <Select>
+              <Select.Option value="pending">待发货</Select.Option>
+              <Select.Option value="shipped">已发货</Select.Option>
+              <Select.Option value="delivered">已签收</Select.Option>
+            </Select>
           </Form.Item>
 
           <Form.Item name="shippingAddress" label="收货地址">

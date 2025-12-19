@@ -41,7 +41,7 @@ router.get('/', authenticateToken, checkPermission('user_view', 'user_manage'), 
     }
 
     // 按用户类型和ID排序：管理员 > 组长 > 业务员，同类型按ID升序
-    sql += ' GROUP BY u.id ORDER BY FIELD(u.user_type, "admin", "leader", "salesman"), u.id ASC LIMIT ? OFFSET ?';
+    sql += ' GROUP BY u.id ORDER BY FIELD(u.user_type, "admin", "leader", "deliver", "editor", "salesman"), u.id ASC LIMIT ? OFFSET ?';
     params.push(parseInt(pageSize), offset);
 
     const [users] = await pool.query(sql, params);
@@ -50,7 +50,9 @@ router.get('/', authenticateToken, checkPermission('user_view', 'user_manage'), 
     const userTypeMap = {
       'admin': '管理员',
       'leader': '商务/组长',
-      'salesman': '业务员'
+      'salesman': '业务员',
+      'deliver': '发货员',
+      'editor': '剪辑'
     };
 
     const formattedUsers = users.map(u => ({

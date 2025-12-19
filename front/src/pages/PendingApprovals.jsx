@@ -127,13 +127,17 @@ const PendingApprovals = () => {
   };
 
   const getTypeTag = (type) => {
-    return type === 'out' 
-      ? <Tag color="orange">出库</Tag>
-      : <Tag color="blue">入库</Tag>;
+    if (type === 'out') return <Tag color="orange">出库</Tag>;
+    if (type === 'self_purchase') return <Tag color="purple">自购立牌</Tag>;
+    return <Tag color="blue">入库</Tag>;
   };
 
   // 渲染商品列表
   const renderItems = (record) => {
+    // 自购立牌显示数量
+    if (record.type === 'self_purchase') {
+      return <span style={{ color: '#722ed1' }}>自购立牌 x{record.quantity}</span>;
+    }
     if (record.items && record.items.length > 0) {
       return (
         <Space direction="vertical" size={0}>
@@ -202,13 +206,16 @@ const PendingApprovals = () => {
       width: 220,
       render: (_, record) => (
         <Space>
-          <Button 
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => showEdit(record)}
-          >
-            编辑
-          </Button>
+          {/* 自购立牌没有商品可编辑 */}
+          {record.type !== 'self_purchase' && (
+            <Button 
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => showEdit(record)}
+            >
+              编辑
+            </Button>
+          )}
           <Button 
             type="primary" 
             size="small"
@@ -327,9 +334,12 @@ const PendingApprovals = () => {
         footer={
           <Space>
             <Button onClick={() => setDetailVisible(false)}>关闭</Button>
-            <Button onClick={() => { setDetailVisible(false); showEdit(currentRequest); }}>
-              编辑
-            </Button>
+            {/* 自购立牌没有商品可编辑 */}
+            {currentRequest?.type !== 'self_purchase' && (
+              <Button onClick={() => { setDetailVisible(false); showEdit(currentRequest); }}>
+                编辑
+              </Button>
+            )}
             <Button danger onClick={() => { setDetailVisible(false); showReject(currentRequest); }}>
               拒绝
             </Button>
@@ -373,7 +383,7 @@ const PendingApprovals = () => {
             <Descriptions.Item label="收货地址" span={2}>{currentRequest.address || '-'}</Descriptions.Item>
             <Descriptions.Item label="收件人">{currentRequest.receiver_name || '-'}</Descriptions.Item>
             <Descriptions.Item label="联系电话">{currentRequest.receiver_phone || '-'}</Descriptions.Item>
-            {currentRequest.type === 'out' && (
+            {(currentRequest.type === 'out' || currentRequest.type === 'self_purchase') && (
               <Descriptions.Item label="邮费承担">
                 {currentRequest.shipping_fee === 'company' ? <Tag color="red">公司承担</Tag> : <Tag>到付</Tag>}
               </Descriptions.Item>
