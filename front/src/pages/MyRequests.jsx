@@ -79,6 +79,23 @@ const MyRequests = () => {
     return <Tag color={config.color}>{config.text}</Tag>;
   };
 
+  // 渲染商品列表
+  const renderItems = (record) => {
+    if (record.items && record.items.length > 0) {
+      return (
+        <Space direction="vertical" size={0}>
+          {record.items.map((item, index) => (
+            <span key={index}>
+              {item.product_name} x{item.quantity}
+            </span>
+          ))}
+        </Space>
+      );
+    }
+    // 兼容旧数据
+    return record.items_summary || record.product_name || '-';
+  };
+
   const columns = [
     {
       title: '申请单号',
@@ -95,16 +112,9 @@ const MyRequests = () => {
     },
     {
       title: '商品',
-      dataIndex: 'product_name',
-      key: 'product_name',
-      width: 150,
-    },
-    {
-      title: '数量',
-      dataIndex: 'quantity',
-      key: 'quantity',
-      width: 80,
-      render: (val, record) => `${val} ${record.product_unit || '个'}`
+      key: 'items',
+      width: 200,
+      render: (_, record) => renderItems(record)
     },
     {
       title: '状态',
@@ -187,12 +197,28 @@ const MyRequests = () => {
             <Descriptions.Item label="申请单号">{currentRequest.request_no}</Descriptions.Item>
             <Descriptions.Item label="状态">{getStatusTag(currentRequest.status)}</Descriptions.Item>
             <Descriptions.Item label="类型">{getTypeTag(currentRequest.type)}</Descriptions.Item>
-            <Descriptions.Item label="商品">{currentRequest.product_name}</Descriptions.Item>
-            <Descriptions.Item label="数量">{currentRequest.quantity} {currentRequest.product_unit || '个'}</Descriptions.Item>
             <Descriptions.Item label="提交时间">{dayjs(currentRequest.created_at).format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
+            
+            {/* 商品明细 */}
+            <Descriptions.Item label="商品明细" span={2}>
+              {currentRequest.items && currentRequest.items.length > 0 ? (
+                <Table
+                  dataSource={currentRequest.items}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                  columns={[
+                    { title: '商品', dataIndex: 'product_name', key: 'product_name' },
+                    { title: '数量', dataIndex: 'quantity', key: 'quantity', render: (v, r) => `${v} ${r.product_unit || ''}` },
+                  ]}
+                />
+              ) : (
+                currentRequest.items_summary || '-'
+              )}
+            </Descriptions.Item>
+            
             <Descriptions.Item label="商家" span={2}>{currentRequest.merchant || '-'}</Descriptions.Item>
             <Descriptions.Item label="地址" span={2}>{currentRequest.address || '-'}</Descriptions.Item>
-            <Descriptions.Item label="原因" span={2}>{currentRequest.reason || '-'}</Descriptions.Item>
             <Descriptions.Item label="备注" span={2}>{currentRequest.remark || '-'}</Descriptions.Item>
             
             {currentRequest.status !== 'pending' && (
@@ -223,4 +249,3 @@ const MyRequests = () => {
 };
 
 export default MyRequests;
-

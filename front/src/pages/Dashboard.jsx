@@ -130,21 +130,28 @@ const Dashboard = () => {
           {recentRequests.length > 0 ? (
             <List
               dataSource={recentRequests}
-              renderItem={(item) => (
-                <List.Item
-                  extra={getStatusTag(item.status)}
-                >
-                  <List.Item.Meta
-                    title={`${item.product_name} - ${item.type === 'out' ? '出库' : '入库'} ${item.quantity} ${item.product_unit || '个'}`}
-                    description={
-                      <span style={{ color: '#999' }}>
-                        {dayjs(item.created_at).format('YYYY-MM-DD HH:mm')}
-                        {item.merchant && ` · ${item.merchant}`}
-                      </span>
-                    }
-                  />
-                </List.Item>
-              )}
+              renderItem={(item) => {
+                // 显示商品信息
+                const itemsDisplay = item.items && item.items.length > 0
+                  ? item.items.map(i => `${i.product_name} x${i.quantity}`).join(', ')
+                  : item.items_summary || item.product_name || '未知商品';
+                
+                return (
+                  <List.Item
+                    extra={getStatusTag(item.status)}
+                  >
+                    <List.Item.Meta
+                      title={`${itemsDisplay} - ${item.type === 'out' ? '出库' : '入库'}`}
+                      description={
+                        <span style={{ color: '#999' }}>
+                          {dayjs(item.created_at).format('YYYY-MM-DD HH:mm')}
+                          {item.merchant && ` · ${item.merchant}`}
+                        </span>
+                      }
+                    />
+                  </List.Item>
+                );
+              }}
             />
           ) : (
             <Empty description="暂无申请记录" />

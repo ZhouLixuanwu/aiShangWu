@@ -27,6 +27,7 @@ const stockRequestRoutes = require('./routes/stockRequests');
 const logRoutes = require('./routes/logs');
 const statsRoutes = require('./routes/stats');
 const mediaRoutes = require('./routes/media');
+const copywritingRoutes = require('./routes/copywriting');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -35,6 +36,7 @@ app.use('/api/stock-requests', stockRequestRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/copywriting', copywritingRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {

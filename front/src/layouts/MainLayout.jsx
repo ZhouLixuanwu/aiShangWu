@@ -18,7 +18,10 @@ import {
   PictureOutlined,
   UploadOutlined,
   CloseOutlined,
-  AudioOutlined
+  AudioOutlined,
+  BookOutlined,
+  FormOutlined,
+  AuditOutlined
 } from '@ant-design/icons';
 import useUserStore from '../store/userStore';
 
@@ -58,22 +61,27 @@ const MainLayout = () => {
       icon: <ShoppingOutlined />,
       label: '商品管理',
     },
-    hasPermission('stock_submit') && {
+    (hasPermission('stock_submit') || hasPermission('stock_approve')) && {
       key: 'stock',
       icon: <SwapOutlined />,
       label: '库存变动',
       children: [
-        {
+        hasPermission('stock_submit') && {
           key: '/stock-requests',
           icon: <EditOutlined />,
           label: '提交变动',
         },
-        {
+        hasPermission('stock_submit') && {
           key: '/my-requests',
           icon: <UnorderedListOutlined />,
           label: '我的申请',
         },
-      ],
+        hasPermission('stock_approve') && {
+          key: '/pending-approvals',
+          icon: <AuditOutlined />,
+          label: '待审批',
+        },
+      ].filter(Boolean),
     },
     hasPermission('stock_view_all') && {
       key: '/stock-overview',
@@ -102,7 +110,9 @@ const MainLayout = () => {
         },
       ].filter(Boolean),
     },
+    
     (hasPermission('media_upload') || hasPermission('media_view_team') || hasPermission('voice_edit')) && {
+    (hasPermission('media_upload') || hasPermission('media_view_team') || hasPermission('voice_edit')) || hasPermission('copywriting_manage') || hasPermission('copywriting_edit')) && {
       key: 'media',
       icon: <PictureOutlined />,
       label: '素材管理',
@@ -121,6 +131,15 @@ const MainLayout = () => {
           key: '/voice-edit',
           icon: <AudioOutlined />,
           label: '声音剪辑',
+        hasPermission('copywriting_manage') && {
+          key: '/copywriting-library',
+          icon: <BookOutlined />,
+          label: '文案库',
+        },
+        hasPermission('copywriting_edit') && {
+          key: '/media-copywriting',
+          icon: <FormOutlined />,
+          label: '素材文案',
         },
       ].filter(Boolean),
     },
@@ -168,13 +187,13 @@ const MainLayout = () => {
 
   const getOpenKeys = () => {
     const path = location.pathname;
-    if (path.includes('stock-requests') || path.includes('my-requests')) {
+    if (path.includes('stock-requests') || path.includes('my-requests') || path.includes('pending-approvals')) {
       return ['stock'];
     }
     if (path.includes('logs')) {
       return ['logs'];
     }
-    if (path.includes('media')) {
+    if (path.includes('media') || path.includes('copywriting')) {
       return ['media'];
     }
     return [];

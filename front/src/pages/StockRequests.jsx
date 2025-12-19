@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { 
   Form, Select, InputNumber, Input, Button, Card, 
-  message, Result, Divider, Space, Empty, Radio
+  message, Result, Divider, Space, Empty, Radio, Table, Tag
 } from 'antd';
-import { SendOutlined, ShoppingOutlined, PlusCircleOutlined, MinusCircleOutlined, UserOutlined, EnvironmentOutlined } from '@ant-design/icons';
+import { SendOutlined, ShoppingOutlined, PlusCircleOutlined, MinusCircleOutlined, UserOutlined, EnvironmentOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import request from '../utils/request';
 import useUserStore from '../store/userStore';
 
@@ -13,10 +13,16 @@ const StockRequests = () => {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submittedNo, setSubmittedNo] = useState('');
+  const [submittedSummary, setSubmittedSummary] = useState('');
   const [form] = Form.useForm();
-  const [selectedProduct, setSelectedProduct] = useState(null);
   const [activeType, setActiveType] = useState(null); // 当前操作类型
   const { hasPermission } = useUserStore();
+
+  // 已选商品列表
+  const [selectedItems, setSelectedItems] = useState([]);
+  // 当前正在添加的商品
+  const [currentProductId, setCurrentProductId] = useState(null);
+  const [currentQuantity, setCurrentQuantity] = useState(1);
 
   // 权限检查
   const canAdd = hasPermission('stock_add');
@@ -36,19 +42,64 @@ const StockRequests = () => {
     }
   };
 
-  // 获取下属业务员列表
+  // 获取所有业务员列表（自己名下的在前面）
   const fetchSalesmen = async () => {
     try {
-      const res = await request.get('/users/my-salesmen');
+      const res = await request.get('/users/all-salesmen');
       setSalesmen(res.data || []);
     } catch (error) {
       console.error('获取业务员列表失败:', error);
     }
   };
 
-  const handleProductChange = (productId) => {
-    const product = products.find(p => p.id === productId);
-    setSelectedProduct(product);
+  // 添加商品到列表
+  const handleAddItem = () => {
+    if (!currentProductId) {
+      message.warning('请选择商品');
+      return;
+    }
+    if (!currentQuantity || currentQuantity < 1) {
+      message.warning('请输入有效数量');
+      return;
+    }
+
+    const product = products.find(p => p.id === currentProductId);
+    if (!product) return;
+
+    // 检查是否已添加
+    const existingIndex = selectedItems.findIndex(item => item.productId === currentProductId);
+    if (existingIndex >= 0) {
+      // 更新数量
+      const newItems = [...selectedItems];
+      newItems[existingIndex].quantity += currentQuantity;
+      setSelectedItems(newItems);
+    } else {
+      // 新增
+      setSelectedItems([...selectedItems, {
+        productId: currentProductId,
+        productName: product.name,
+        productUnit: product.unit,
+        stock: product.stock,
+        quantity: currentQuantity
+      }]);
+    }
+
+    // 重置输入
+    setCurrentProductId(null);
+    setCurrentQuantity(1);
+  };
+
+  // 删除商品
+  const handleRemoveItem = (productId) => {
+    setSelectedItems(selectedItems.filter(item => item.productId !== productId));
+  };
+
+  // 修改商品数量
+  const handleQuantityChange = (productId, quantity) => {
+    const newItems = selectedItems.map(item => 
+      item.productId === productId ? { ...item, quantity } : item
+    );
+    setSelectedItems(newItems);
   };
 
   const handleSubmit = async (values) => {
@@ -56,11 +107,28 @@ const StockRequests = () => {
       message.error('请选择操作类型');
       return;
     }
+    if (selectedItems.length === 0) {
+      message.error('请至少添加一个商品');
+      return;
+    }
+
+    // 检查出库时库存是否足够
+    if (activeType === 'out') {
+      for (const item of selectedItems) {
+        if (item.quantity > item.stock) {
+          message.error(`${item.productName} 库存不足（当前: ${item.stock}，需要: ${item.quantity}）`);
+          return;
+        }
+      }
+    }
+
     setLoading(true);
     try {
       const submitData = {
-        productId: values.productId,
-        quantity: values.quantity,
+        items: selectedItems.map(item => ({
+          productId: item.productId,
+          quantity: item.quantity
+        })),
         type: activeType,
         merchant: values.merchant,
         address: values.address,
@@ -78,6 +146,7 @@ const StockRequests = () => {
       const res = await request.post('/stock-requests', submitData);
       
       setSubmittedNo(res.data.requestNo);
+      setSubmittedSummary(res.data.itemsSummary);
       setSubmitted(true);
       message.success('操作成功');
     } catch (error) {
@@ -91,14 +160,19 @@ const StockRequests = () => {
   const handleSelectType = (type) => {
     setActiveType(type);
     form.resetFields();
-    setSelectedProduct(null);
+    setSelectedItems([]);
+    setCurrentProductId(null);
+    setCurrentQuantity(1);
   };
 
   const handleReset = () => {
     form.resetFields();
     setSubmitted(false);
     setSubmittedNo('');
-    setSelectedProduct(null);
+    setSubmittedSummary('');
+    setSelectedItems([]);
+    setCurrentProductId(null);
+    setCurrentQuantity(1);
     setActiveType(null);
   };
 
@@ -108,11 +182,17 @@ const StockRequests = () => {
       <div className="page-card">
         <Result
           status="success"
-          title="操作成功！"
-          subTitle={`申请单号: ${submittedNo}，库存已更新。`}
+          title="申请已提交！"
+          subTitle={
+            <div>
+              <div>申请单号: {submittedNo}</div>
+              <div style={{ marginTop: 8 }}>商品: {submittedSummary}</div>
+              <div style={{ marginTop: 8, color: '#faad14' }}>等待审批中...</div>
+            </div>
+          }
           extra={[
             <Button type="primary" key="new" onClick={handleReset}>
-              继续操作
+              继续申请
             </Button>,
           ]}
         />
@@ -164,20 +244,85 @@ const StockRequests = () => {
     );
   }
 
-  // 商品选项（用于搜索过滤）
-  const productOptions = products.map(p => ({
-    value: p.id,
-    label: `${p.name} - 库存: ${p.stock} ${p.unit}`
-  }));
+  // 商品选项（排除已选择的）
+  const productOptions = products
+    .filter(p => !selectedItems.find(item => item.productId === p.id))
+    .map(p => ({
+      value: p.id,
+      label: `${p.name} - 库存: ${p.stock} ${p.unit}`
+    }));
 
-  // 业务员选项
-  const salesmenOptions = salesmen.map(s => ({
-    value: s.id,
-    label: s.realName || s.username
-  }));
+  // 业务员选项（自己名下的标记★）
+  const mySalesmen = salesmen.filter(s => s.isMine);
+  const otherSalesmen = salesmen.filter(s => !s.isMine);
+  
+  const salesmenOptions = [
+    ...(mySalesmen.length > 0 ? [{
+      label: '我的业务员',
+      options: mySalesmen.map(s => ({
+        value: s.id,
+        label: `${s.realName || s.username}`
+      }))
+    }] : []),
+    ...(otherSalesmen.length > 0 ? [{
+      label: '其他业务员',
+      options: otherSalesmen.map(s => ({
+        value: s.id,
+        label: s.realName || s.username
+      }))
+    }] : [])
+  ];
 
-  // 出库时是否需要选择业务员（有下属业务员时才显示）
+  // 出库时是否需要选择业务员
   const needSelectSalesman = activeType === 'out' && salesmen.length > 0;
+
+  // 当前选中商品信息
+  const currentProduct = products.find(p => p.id === currentProductId);
+
+  // 商品列表的列定义
+  const itemColumns = [
+    {
+      title: '商品名称',
+      dataIndex: 'productName',
+      key: 'productName',
+    },
+    {
+      title: '当前库存',
+      dataIndex: 'stock',
+      key: 'stock',
+      width: 100,
+      render: (val, record) => `${val} ${record.productUnit}`
+    },
+    {
+      title: '数量',
+      dataIndex: 'quantity',
+      key: 'quantity',
+      width: 120,
+      render: (val, record) => (
+        <InputNumber 
+          min={1} 
+          value={val} 
+          onChange={(v) => handleQuantityChange(record.productId, v)}
+          style={{ width: 80 }}
+        />
+      )
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 80,
+      render: (_, record) => (
+        <Button 
+          type="link" 
+          danger 
+          icon={<DeleteOutlined />}
+          onClick={() => handleRemoveItem(record.productId)}
+        >
+          删除
+        </Button>
+      )
+    }
+  ];
 
   return (
     <div className="page-card">
@@ -194,7 +339,7 @@ const StockRequests = () => {
         </Space>
       </div>
 
-      <Card style={{ maxWidth: 600 }}>
+      <Card style={{ maxWidth: 800 }}>
         <Form
           form={form}
           layout="vertical"
@@ -219,46 +364,77 @@ const StockRequests = () => {
             </Form.Item>
           )}
 
-          <Form.Item
-            name="productId"
-            label="选择商品"
-            rules={[{ required: true, message: '请选择商品' }]}
-          >
-            <Select
-              showSearch
-              placeholder="搜索选择商品"
-              optionFilterProp="label"
-              onChange={handleProductChange}
-              options={productOptions}
-              filterOption={(input, option) =>
-                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-              }
-            />
-          </Form.Item>
+          {/* 商品选择区域 */}
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ marginBottom: 8, fontWeight: 500 }}>
+              <ShoppingOutlined /> 选择商品（可多选）
+            </div>
+            
+            {/* 已选商品列表 */}
+            {selectedItems.length > 0 && (
+              <Table
+                columns={itemColumns}
+                dataSource={selectedItems}
+                rowKey="productId"
+                pagination={false}
+                size="small"
+                style={{ marginBottom: 16 }}
+                summary={() => (
+                  <Table.Summary>
+                    <Table.Summary.Row>
+                      <Table.Summary.Cell index={0}>
+                        <strong>合计</strong>
+                      </Table.Summary.Cell>
+                      <Table.Summary.Cell index={1}>
+                        <Tag color="blue">{selectedItems.length} 种商品</Tag>
+                      </Table.Summary.Cell>
+                      <Table.Summary.Cell index={2}>
+                        <strong>{selectedItems.reduce((sum, item) => sum + item.quantity, 0)}</strong> 件
+                      </Table.Summary.Cell>
+                      <Table.Summary.Cell index={3} />
+                    </Table.Summary.Row>
+                  </Table.Summary>
+                )}
+              />
+            )}
 
-          {selectedProduct && (
-            <Card size="small" style={{ marginBottom: 16, background: '#f5f5f5' }}>
-              <Space>
-                <ShoppingOutlined />
-                <span>当前库存: <strong>{selectedProduct.stock}</strong> {selectedProduct.unit}</span>
+            {/* 添加商品 */}
+            <Card size="small" style={{ background: '#fafafa' }}>
+              <Space wrap style={{ width: '100%' }}>
+                <Select
+                  showSearch
+                  placeholder="搜索选择商品"
+                  optionFilterProp="label"
+                  value={currentProductId}
+                  onChange={setCurrentProductId}
+                  options={productOptions}
+                  style={{ width: 280 }}
+                  filterOption={(input, option) =>
+                    (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                />
+                <InputNumber 
+                  min={1} 
+                  value={currentQuantity}
+                  onChange={setCurrentQuantity}
+                  placeholder="数量"
+                  style={{ width: 100 }}
+                />
+                {currentProduct && (
+                  <span style={{ color: '#999' }}>
+                    库存: {currentProduct.stock} {currentProduct.unit}
+                  </span>
+                )}
+                <Button 
+                  type="primary" 
+                  icon={<PlusOutlined />}
+                  onClick={handleAddItem}
+                >
+                  添加
+                </Button>
               </Space>
             </Card>
-          )}
-
-          <Form.Item
-            name="quantity"
-            label="数量"
-            rules={[
-              { required: true, message: '请输入数量' },
-              { type: 'number', min: 1, message: '数量必须大于0' }
-            ]}
-          >
-            <InputNumber 
-              min={1} 
-              style={{ width: '100%' }} 
-              placeholder="请输入变动数量"
-            />
-          </Form.Item>
+          </div>
 
           <Divider><EnvironmentOutlined /> 收货信息</Divider>
 
@@ -303,8 +479,10 @@ const StockRequests = () => {
               size="large"
               block
               danger={activeType === 'out'}
+              disabled={selectedItems.length === 0}
             >
               {activeType === 'out' ? '确认出库' : '确认入库'}
+              {selectedItems.length > 0 && ` (${selectedItems.length}种商品)`}
             </Button>
           </Form.Item>
         </Form>
@@ -314,4 +492,3 @@ const StockRequests = () => {
 };
 
 export default StockRequests;
-

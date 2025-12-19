@@ -14,6 +14,9 @@ import Users from './pages/Users';
 import MediaUpload from './pages/MediaUpload';
 import TeamMedia from './pages/TeamMedia';
 import VoiceEdit from './pages/VoiceEdit';
+import CopywritingLibrary from './pages/CopywritingLibrary';
+import MediaCopywriting from './pages/MediaCopywriting';
+import PendingApprovals from './pages/PendingApprovals';
 
 // 路由守卫组件
 const PrivateRoute = ({ children, permission }) => {
@@ -72,6 +75,13 @@ function App() {
             </PrivateRoute>
           } />
           
+          {/* 待审批 */}
+          <Route path="pending-approvals" element={
+            <PrivateRoute permission="stock_approve">
+              <PendingApprovals />
+            </PrivateRoute>
+          } />
+          
           {/* 发货管理 */}
           <Route path="shipping" element={
             <PrivateRoute permission="shipping_manage">
@@ -117,6 +127,19 @@ function App() {
           <Route path="voice-edit" element={
             <PrivateRoute permission="voice_edit">
               <VoiceEdit />
+            </PrivateRoute>
+          } />
+          {/* 文案库 */}
+          <Route path="copywriting-library" element={
+            <PrivateRoute permission="copywriting_manage">
+              <CopywritingLibrary />
+            </PrivateRoute>
+          } />
+          
+          {/* 素材文案 */}
+          <Route path="media-copywriting" element={
+            <PrivateRoute permission="copywriting_edit">
+              <MediaCopywriting />
             </PrivateRoute>
           } />
         </Route>
