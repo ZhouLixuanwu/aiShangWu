@@ -21,17 +21,14 @@ router.get('/', authenticateToken, async (req, res) => {
     const offset = (page - 1) * pageSize;
 
     let sql = `
-      SELECT sr.*, p.name as product_name, p.sku as product_sku, p.unit as product_unit,
-             si.shipping_status, si.tracking_no
+      SELECT sr.*, si.shipping_status, si.tracking_no
       FROM stock_requests sr
-      LEFT JOIN products p ON sr.product_id = p.id
       LEFT JOIN shipping_info si ON sr.id = si.request_id
       WHERE 1=1
     `;
     let countSql = `
       SELECT COUNT(*) as total 
       FROM stock_requests sr
-      LEFT JOIN products p ON sr.product_id = p.id
       WHERE 1=1
     `;
     const params = [];
@@ -80,8 +77,8 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 
     if (keyword) {
-      sql += ' AND (sr.request_no LIKE ? OR p.name LIKE ? OR sr.merchant LIKE ?)';
-      countSql += ' AND (sr.request_no LIKE ? OR p.name LIKE ? OR sr.merchant LIKE ?)';
+      sql += ' AND (sr.request_no LIKE ? OR sr.items_summary LIKE ? OR sr.merchant LIKE ?)';
+      countSql += ' AND (sr.request_no LIKE ? OR sr.items_summary LIKE ? OR sr.merchant LIKE ?)';
       params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
       countParams.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
     }
@@ -91,6 +88,15 @@ router.get('/', authenticateToken, async (req, res) => {
 
     const [requests] = await pool.query(sql, params);
     const [countResult] = await pool.query(countSql, countParams);
+
+    // 获取每个申请的商品明细
+    for (let req of requests) {
+      const [items] = await pool.query(
+        'SELECT * FROM stock_request_items WHERE request_id = ?',
+        [req.id]
+      );
+      req.items = items;
+    }
 
     paginate(res, requests, countResult[0].total, page, pageSize);
 
@@ -135,11 +141,10 @@ router.get('/approved', authenticateToken, checkPermission('shipping_manage', 's
     const offset = (page - 1) * pageSize;
 
     let sql = `
-      SELECT sr.*, p.name as product_name, p.sku as product_sku, p.unit as product_unit,
+      SELECT sr.*,
              si.id as shipping_id, si.shipping_status, si.tracking_no, si.courier_company,
              si.shipping_address, si.receiver_name, si.receiver_phone, si.shipped_at, si.remark as shipping_remark
       FROM stock_requests sr
-      LEFT JOIN products p ON sr.product_id = p.id
       LEFT JOIN shipping_info si ON sr.id = si.request_id
       WHERE sr.status = 'approved' AND sr.type = 'out'
     `;
@@ -165,8 +170,8 @@ router.get('/approved', authenticateToken, checkPermission('shipping_manage', 's
     }
 
     if (keyword) {
-      sql += ' AND (sr.request_no LIKE ? OR p.name LIKE ? OR sr.merchant LIKE ?)';
-      countSql += ' AND (sr.request_no LIKE ? OR p.name LIKE ? OR sr.merchant LIKE ?)';
+      sql += ' AND (sr.request_no LIKE ? OR sr.items_summary LIKE ? OR sr.merchant LIKE ?)';
+      countSql += ' AND (sr.request_no LIKE ? OR sr.items_summary LIKE ? OR sr.merchant LIKE ?)';
       params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
       countParams.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
     }
@@ -176,6 +181,15 @@ router.get('/approved', authenticateToken, checkPermission('shipping_manage', 's
 
     const [requests] = await pool.query(sql, params);
     const [countResult] = await pool.query(countSql, countParams);
+
+    // 获取每个申请的商品明细
+    for (let req of requests) {
+      const [items] = await pool.query(
+        'SELECT * FROM stock_request_items WHERE request_id = ?',
+        [req.id]
+      );
+      req.items = items;
+    }
 
     paginate(res, requests, countResult[0].total, page, pageSize);
 
@@ -189,11 +203,10 @@ router.get('/approved', authenticateToken, checkPermission('shipping_manage', 's
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const [requests] = await pool.query(
-      `SELECT sr.*, p.name as product_name, p.sku as product_sku, p.unit as product_unit, p.stock as current_stock,
+      `SELECT sr.*,
               si.id as shipping_id, si.shipping_status, si.tracking_no, si.courier_company,
               si.shipping_address, si.receiver_name, si.receiver_phone, si.shipped_at, si.remark as shipping_remark
        FROM stock_requests sr
-       LEFT JOIN products p ON sr.product_id = p.id
        LEFT JOIN shipping_info si ON sr.id = si.request_id
        WHERE sr.id = ?`,
       [req.params.id]
@@ -203,7 +216,16 @@ router.get('/:id', authenticateToken, async (req, res) => {
       return error(res, '申请不存在', 404);
     }
 
-    success(res, requests[0]);
+    // 获取商品明细
+    const [items] = await pool.query(
+      'SELECT * FROM stock_request_items WHERE request_id = ?',
+      [req.params.id]
+    );
+
+    const result = requests[0];
+    result.items = items;
+
+    success(res, result);
 
   } catch (err) {
     console.error('获取申请详情错误:', err);
@@ -211,13 +233,19 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// 提交库存变动（无需审核，直接生效）
+// 提交库存变动（无需审核，直接生效）- 支持多商品
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { productId, quantity, type, merchant, address, receiverName, receiverPhone, shippingFee, remark, salesmanId } = req.body;
+    const { items, type, merchant, address, receiverName, receiverPhone, shippingFee, remark, salesmanId } = req.body;
+    
+    // 兼容旧接口：如果传的是单个 productId，转换为 items 数组
+    let itemsList = items;
+    if (!items && req.body.productId) {
+      itemsList = [{ productId: req.body.productId, quantity: req.body.quantity }];
+    }
 
-    if (!productId || !quantity || !type) {
-      return error(res, '商品、数量和类型不能为空', 400);
+    if (!itemsList || itemsList.length === 0 || !type) {
+      return error(res, '商品和类型不能为空', 400);
     }
 
     // 根据操作类型检查权限
@@ -226,25 +254,29 @@ router.post('/', authenticateToken, async (req, res) => {
       return error(res, type === 'in' ? '您没有入库权限' : '您没有出库权限', 403);
     }
 
-    // 检查商品是否存在
+    // 检查所有商品是否存在，并验证库存
+    const productIds = itemsList.map(item => item.productId);
     const [products] = await pool.query(
-      'SELECT id, stock FROM products WHERE id = ?',
-      [productId]
+      'SELECT id, name, unit, stock FROM products WHERE id IN (?)',
+      [productIds]
     );
 
-    if (products.length === 0) {
-      return error(res, '商品不存在', 404);
+    if (products.length !== productIds.length) {
+      return error(res, '部分商品不存在', 404);
     }
 
-    const currentStock = products[0].stock;
+    const productMap = {};
+    products.forEach(p => { productMap[p.id] = p; });
 
-    // 检查出库数量是否超过库存
-    if (type === 'out' && quantity > currentStock) {
-      return error(res, '出库数量不能超过当前库存', 400);
+    // 检查出库时库存是否足够
+    if (type === 'out') {
+      for (const item of itemsList) {
+        const product = productMap[item.productId];
+        if (item.quantity > product.stock) {
+          return error(res, `${product.name} 库存不足（当前: ${product.stock}，需要: ${item.quantity}）`, 400);
+        }
+      }
     }
-
-    // 计算新库存
-    const newStock = type === 'in' ? currentStock + quantity : currentStock - quantity;
 
     // 如果指定了业务员，获取业务员姓名
     let salesmanName = null;
@@ -258,6 +290,15 @@ router.post('/', authenticateToken, async (req, res) => {
       }
     }
 
+    // 生成商品摘要
+    const itemsSummary = itemsList.map(item => {
+      const product = productMap[item.productId];
+      return `${product.name} x${item.quantity}`;
+    }).join(', ');
+
+    // 计算总数量
+    const totalQuantity = itemsList.reduce((sum, item) => sum + item.quantity, 0);
+
     const requestNo = generateRequestNo();
 
     // 开启事务
@@ -265,26 +306,42 @@ router.post('/', authenticateToken, async (req, res) => {
     await connection.beginTransaction();
 
     try {
-      // 插入记录（状态直接为approved，无需审核）
+      // 插入主记录（兼容保留 product_id 和 quantity 为第一个商品，同时添加 items_summary）
+      const firstItem = itemsList[0];
       const [result] = await connection.query(
         `INSERT INTO stock_requests 
-         (request_no, product_id, quantity, type, merchant, address, receiver_name, receiver_phone, shipping_fee, remark, 
+         (request_no, product_id, quantity, items_summary, type, merchant, address, receiver_name, receiver_phone, shipping_fee, remark, 
           status, submitter_id, submitter_name, salesman_id, salesman_name, approver_id, approver_name, approved_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, ?, ?, NOW())`,
-        [requestNo, productId, quantity, type, merchant, address, receiverName, receiverPhone, shippingFee || 'receiver', remark, 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, ?, ?, NOW())`,
+        [requestNo, firstItem.productId, totalQuantity, itemsSummary, type, merchant, address, receiverName, receiverPhone, shippingFee || 'receiver', remark, 
          req.user.id, req.user.realName, salesmanId || null, salesmanName, req.user.id, req.user.realName]
       );
 
-      // 直接更新库存
-      await connection.query(
-        'UPDATE products SET stock = ? WHERE id = ?',
-        [newStock, productId]
-      );
+      const requestId = result.insertId;
+
+      // 插入商品明细
+      for (const item of itemsList) {
+        const product = productMap[item.productId];
+        await connection.query(
+          `INSERT INTO stock_request_items (request_id, product_id, product_name, product_unit, quantity)
+           VALUES (?, ?, ?, ?, ?)`,
+          [requestId, item.productId, product.name, product.unit, item.quantity]
+        );
+
+        // 更新库存
+        const newStock = type === 'in' 
+          ? product.stock + item.quantity 
+          : product.stock - item.quantity;
+        await connection.query(
+          'UPDATE products SET stock = ? WHERE id = ?',
+          [newStock, item.productId]
+        );
+      }
 
       await connection.commit();
       connection.release();
 
-      created(res, { id: result.insertId, requestNo, newStock }, '操作成功，库存已更新');
+      created(res, { id: requestId, requestNo, itemsSummary }, '操作成功，库存已更新');
     } catch (err) {
       await connection.rollback();
       connection.release();

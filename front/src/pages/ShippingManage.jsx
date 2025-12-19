@@ -89,6 +89,23 @@ const ShippingManage = () => {
     return <Tag color={config.color}>{config.text}</Tag>;
   };
 
+  // 渲染商品列表
+  const renderItems = (record) => {
+    if (record.items && record.items.length > 0) {
+      return (
+        <Space direction="vertical" size={0}>
+          {record.items.map((item, index) => (
+            <span key={index} style={{ fontSize: 12 }}>
+              {item.product_name} x{item.quantity}
+            </span>
+          ))}
+        </Space>
+      );
+    }
+    // 兼容旧数据
+    return record.items_summary || '-';
+  };
+
   const columns = [
     {
       title: '申请单号',
@@ -98,16 +115,9 @@ const ShippingManage = () => {
     },
     {
       title: '商品',
-      dataIndex: 'product_name',
-      key: 'product_name',
-      width: 120,
-    },
-    {
-      title: '数量',
-      dataIndex: 'quantity',
-      key: 'quantity',
-      width: 70,
-      render: (val) => val
+      key: 'items',
+      width: 180,
+      render: (_, record) => renderItems(record)
     },
     {
       title: '商务',
@@ -221,7 +231,26 @@ const ShippingManage = () => {
         {currentRequest && (
           <Descriptions bordered column={2}>
             <Descriptions.Item label="申请单号">{currentRequest.request_no}</Descriptions.Item>
-            <Descriptions.Item label="商品">{currentRequest.product_name} x {currentRequest.quantity}</Descriptions.Item>
+            <Descriptions.Item label="审批时间">{currentRequest.approved_at ? dayjs(currentRequest.approved_at).format('YYYY-MM-DD HH:mm') : '-'}</Descriptions.Item>
+            
+            {/* 商品明细 */}
+            <Descriptions.Item label="商品明细" span={2}>
+              {currentRequest.items && currentRequest.items.length > 0 ? (
+                <Table
+                  dataSource={currentRequest.items}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                  columns={[
+                    { title: '商品', dataIndex: 'product_name', key: 'product_name' },
+                    { title: '数量', dataIndex: 'quantity', key: 'quantity', render: (v, r) => `${v} ${r.product_unit || ''}` },
+                  ]}
+                />
+              ) : (
+                currentRequest.items_summary || '-'
+              )}
+            </Descriptions.Item>
+            
             <Descriptions.Item label="商务">
               <Tag color="blue">{currentRequest.submitter_name}</Tag>
             </Descriptions.Item>
@@ -235,7 +264,6 @@ const ShippingManage = () => {
             <Descriptions.Item label="邮费承担">
               {currentRequest.shipping_fee === 'company' ? <Tag color="red">公司承担</Tag> : <Tag>到付</Tag>}
             </Descriptions.Item>
-            <Descriptions.Item label="审批时间">{currentRequest.approved_at ? dayjs(currentRequest.approved_at).format('YYYY-MM-DD HH:mm') : '-'}</Descriptions.Item>
             <Descriptions.Item label="发货状态">{getShippingStatus(currentRequest.shipping_status)}</Descriptions.Item>
             <Descriptions.Item label="快递单号">{currentRequest.tracking_no || '-'}</Descriptions.Item>
             <Descriptions.Item label="快递公司">{currentRequest.courier_company || '-'}</Descriptions.Item>
@@ -252,6 +280,15 @@ const ShippingManage = () => {
         onOk={handleSubmit}
         width={600}
       >
+        {currentRequest && (
+          <div style={{ marginBottom: 16, padding: 12, background: '#f5f5f5', borderRadius: 6 }}>
+            <strong>商品：</strong>
+            {currentRequest.items && currentRequest.items.length > 0 
+              ? currentRequest.items.map(item => `${item.product_name} x${item.quantity}`).join(', ')
+              : currentRequest.items_summary || '-'
+            }
+          </div>
+        )}
         <Form form={form} layout="vertical">
           <Form.Item name="shippingStatus" label="发货状态">
             <Select>
@@ -300,4 +337,3 @@ const ShippingManage = () => {
 };
 
 export default ShippingManage;
-
