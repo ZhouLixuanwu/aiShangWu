@@ -86,7 +86,7 @@ const MainLayout = () => {
     hasPermission('stock_view_all') && {
       key: '/stock-overview',
       icon: <EyeOutlined />,
-      label: '库存总览',
+      label: '订单总览',
     },
     hasPermission('shipping_manage') && {
       key: '/shipping',
