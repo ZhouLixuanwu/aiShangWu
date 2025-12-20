@@ -3,7 +3,7 @@ import {
   Table, Tag, Space, Button, Modal, Form, Input, Select, 
   message, Descriptions
 } from 'antd';
-import { EditOutlined, EyeOutlined, SearchOutlined } from '@ant-design/icons';
+import { EditOutlined, EyeOutlined, SearchOutlined, CopyOutlined } from '@ant-design/icons';
 import request from '../utils/request';
 import dayjs from 'dayjs';
 
@@ -16,6 +16,7 @@ const ShippingManage = () => {
   const [currentRequest, setCurrentRequest] = useState(null);
   const [shippingStatus, setShippingStatus] = useState('');
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -98,6 +99,50 @@ const ShippingManage = () => {
     return <Tag color="blue">入库</Tag>;
   };
 
+  // 复制单条记录的地址信息
+  const copyAddressInfo = (record) => {
+    const receiverName = record.orig_receiver_name || record.receiver_name || '-';
+    const receiverPhone = record.orig_receiver_phone || record.receiver_phone || '-';
+    const address = record.orig_address || record.address || '-';
+    const text = `${receiverName} ${receiverPhone} ${address}`;
+    
+    navigator.clipboard.writeText(text).then(() => {
+      message.success('地址信息已复制到剪贴板');
+    }).catch(() => {
+      message.error('复制失败');
+    });
+  };
+
+  // 批量复制选中记录的地址信息
+  const copySelectedAddresses = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要复制的记录');
+      return;
+    }
+    
+    const selectedRecords = requests.filter(r => selectedRowKeys.includes(r.id));
+    const textArr = selectedRecords.map(record => {
+      const receiverName = record.orig_receiver_name || record.receiver_name || '-';
+      const receiverPhone = record.orig_receiver_phone || record.receiver_phone || '-';
+      const address = record.orig_address || record.address || '-';
+      return `${receiverName} ${receiverPhone} ${address}`;
+    });
+    
+    const text = textArr.join('\n');
+    
+    navigator.clipboard.writeText(text).then(() => {
+      message.success(`已复制 ${selectedRecords.length} 条记录的地址信息`);
+    }).catch(() => {
+      message.error('复制失败');
+    });
+  };
+
+  // 表格行选择配置
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (keys) => setSelectedRowKeys(keys),
+  };
+
   // 渲染商品列表
   const renderItems = (record) => {
     // 自购立牌显示数量
@@ -136,7 +181,7 @@ const ShippingManage = () => {
     {
       title: '商品',
       key: 'items',
-      width: 180,
+      width: 130,
       render: (_, record) => renderItems(record)
     },
     {
@@ -215,30 +260,43 @@ const ShippingManage = () => {
         <span className="page-card-title">发货管理</span>
       </div>
 
-      <div className="search-bar">
-        <Select
-          placeholder="发货状态"
-          value={shippingStatus}
-          onChange={setShippingStatus}
-          style={{ width: 150 }}
-          allowClear
-        >
-          <Select.Option value="none">未处理</Select.Option>
-          <Select.Option value="pending">待发货</Select.Option>
-          <Select.Option value="shipped">已发货</Select.Option>
-          <Select.Option value="delivered">已签收</Select.Option>
-        </Select>
-        <Input
-          placeholder="搜索单号/商品/商家"
-          value={searchKeyword}
-          onChange={(e) => setSearchKeyword(e.target.value)}
-          onPressEnter={handleSearch}
-          style={{ width: 200 }}
-        />
-        <Button icon={<SearchOutlined />} onClick={handleSearch}>搜索</Button>
+      <div className="search-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Space>
+          <Select
+            placeholder="发货状态"
+            value={shippingStatus}
+            onChange={setShippingStatus}
+            style={{ width: 150 }}
+            allowClear
+          >
+            <Select.Option value="none">未处理</Select.Option>
+            <Select.Option value="pending">待发货</Select.Option>
+            <Select.Option value="shipped">已发货</Select.Option>
+            <Select.Option value="delivered">已签收</Select.Option>
+          </Select>
+          <Input
+            placeholder="搜索单号/商品/商家"
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            onPressEnter={handleSearch}
+            style={{ width: 200 }}
+          />
+          <Button icon={<SearchOutlined />} onClick={handleSearch}>搜索</Button>
+        </Space>
+        <Space>
+          <Button 
+            type="primary"
+            icon={<CopyOutlined />} 
+            onClick={copySelectedAddresses}
+            disabled={selectedRowKeys.length === 0}
+          >
+            批量复制
+          </Button>
+        </Space>
       </div>
 
       <Table
+        rowSelection={rowSelection}
         columns={columns}
         dataSource={requests}
         rowKey="id"
@@ -294,7 +352,19 @@ const ShippingManage = () => {
               {currentRequest.salesman_name ? <Tag color="green">{currentRequest.salesman_name}</Tag> : '-'}
             </Descriptions.Item>
             <Descriptions.Item label="商家" span={2}>{currentRequest.merchant || '-'}</Descriptions.Item>
-            <Descriptions.Item label="收货地址" span={2}>{currentRequest.orig_address || currentRequest.address || '-'}</Descriptions.Item>
+            <Descriptions.Item label="收货地址" span={2}>
+              <Space>
+                <span>{currentRequest.orig_address || currentRequest.address || '-'}</span>
+                <Button 
+                  type="default" 
+                  size="small" 
+                  icon={<CopyOutlined />}
+                  onClick={() => copyAddressInfo(currentRequest)}
+                >
+                  复制
+                </Button>
+              </Space>
+            </Descriptions.Item>
             <Descriptions.Item label="收件人">{currentRequest.orig_receiver_name || currentRequest.receiver_name || '-'}</Descriptions.Item>
             <Descriptions.Item label="联系电话">{currentRequest.orig_receiver_phone || currentRequest.receiver_phone || '-'}</Descriptions.Item>
             <Descriptions.Item label="邮费承担">
