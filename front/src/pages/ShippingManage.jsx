@@ -165,50 +165,50 @@ const ShippingManage = () => {
   };
 
   const columns = [
-    // {
-    //   title: '申请单号',
-    //   dataIndex: 'request_no',
-    //   key: 'request_no',
-    //   width: 150,
-    // },
     {
       title: '类型',
       dataIndex: 'type',
       key: 'type',
-      width: 90,
+      width: 50,
+      align: 'center',
       render: (type) => getTypeTag(type)
     },
     {
       title: '商品',
       key: 'items',
-      width: 130,
+      width: 80,
+      align: 'center',
       render: (_, record) => renderItems(record)
     },
     {
       title: '商务',
       dataIndex: 'submitter_name',
       key: 'submitter_name',
-      width: 80,
+      width: 60,
+      align: 'center',
       render: (val) => <Tag color="blue">{val}</Tag>
     },
     {
       title: '业务员',
       dataIndex: 'salesman_name',
       key: 'salesman_name',
-      width: 80,
+      width: 65,
+      align: 'center',
       render: (val) => val ? <Tag color="green">{val}</Tag> : '-'
     },
     {
       title: '商家',
       dataIndex: 'merchant',
       key: 'merchant',
-      width: 100,
+      width: 90,
+      align: 'center',
       render: (val) => val || '-'
     },
     {
       title: '收货人',
       key: 'receiver_info',
-      width: 120,
+      width: 75,
+      align: 'center',
       render: (_, record) => (
         <div style={{ fontSize: 12 }}>
           <div>{record.orig_receiver_name || record.receiver_name || '-'}</div>
@@ -220,30 +220,34 @@ const ShippingManage = () => {
       title: '邮费',
       dataIndex: 'shipping_fee',
       key: 'shipping_fee',
-      width: 70,
+      width: 40,
+      align: 'center',
       render: (val) => val === 'company' ? <Tag color="red">公司</Tag> : <Tag>到付</Tag>
     },
     {
-      title: '发货状态',
+      title: '状态',
       dataIndex: 'shipping_status',
       key: 'shipping_status',
-      width: 90,
+      width: 60,
+      align: 'center',
       render: (status) => getShippingStatus(status)
     },
     {
       title: '快递单号',
       dataIndex: 'tracking_no',
       key: 'tracking_no',
-      width: 130,
+      width: 90,
+      align: 'center',
       render: (val) => val || '-'
     },
     {
       title: '操作',
       key: 'action',
-      width: 130,
+      width: 120,
+      align: 'center',
       render: (_, record) => (
         <Space>
-          <Button type="link" icon={<EyeOutlined />} onClick={() => showDetail(record)}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => showDetail(record)}>
             详情
           </Button>
           <Button type="primary" size="small" icon={<EditOutlined />} onClick={() => showEdit(record)}>
@@ -301,13 +305,14 @@ const ShippingManage = () => {
         dataSource={requests}
         rowKey="id"
         loading={loading}
+        tableLayout="fixed"
         pagination={{
           ...pagination,
           showSizeChanger: true,
           showTotal: (total) => `共 ${total} 条`
         }}
         onChange={(pag) => setPagination(prev => ({ ...prev, current: pag.current, pageSize: pag.pageSize }))}
-        scroll={{ x: 1400 }}
+        scroll={{ x: 950 }}
       />
 
       <Modal

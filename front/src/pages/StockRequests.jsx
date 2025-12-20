@@ -114,13 +114,15 @@ const StockRequests = () => {
       return;
     }
 
-    // 检查出库时库存是否足够
+    // 出库时库存不足也允许提交，但审批时会检查
+    // 显示库存不足警告但不阻止提交
     if (activeType === 'out') {
-      for (const item of selectedItems) {
-        if (item.quantity > item.stock) {
-          message.error(`${item.productName} 库存不足（当前: ${item.stock}，需要: ${item.quantity}）`);
-          return;
-        }
+      const insufficientItems = selectedItems.filter(item => item.quantity > item.stock);
+      if (insufficientItems.length > 0) {
+        const warnings = insufficientItems.map(item => 
+          `${item.productName}（当前: ${item.stock}，需要: ${item.quantity}）`
+        ).join('、');
+        message.warning(`以下商品库存不足：${warnings}，申请仍可提交，但需等库存补足后才能审批通过`);
       }
     }
 
