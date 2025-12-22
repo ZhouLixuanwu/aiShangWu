@@ -228,7 +228,11 @@ const ShippingManage = () => {
       key: 'shipping_fee',
       width: 40,
       align: 'center',
-      render: (val) => val === 'company' ? <Tag color="red">公司</Tag> : <Tag>到付</Tag>
+      render: (val) => val === 'company' 
+        ? <Tag color="red">公司</Tag> 
+        : val === 'self_pickup' 
+          ? <Tag color="green">业务自取</Tag> 
+          : <Tag>到付</Tag>
     },
     {
       title: '状态',
