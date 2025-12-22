@@ -98,18 +98,21 @@ const StockOverview = () => {
       dataIndex: 'request_no',
       key: 'request_no',
       width: 150,
+      align: 'center',
     },
     {
       title: '类型',
       dataIndex: 'type',
       key: 'type',
       width: 70,
+      align: 'center',
       render: (type) => getTypeTag(type)
     },
     {
       title: '商品',
       key: 'items',
       width: 180,
+      align: 'center',
       render: (_, record) => renderItems(record)
     },
     {
@@ -117,6 +120,7 @@ const StockOverview = () => {
       dataIndex: 'status',
       key: 'status',
       width: 90,
+      align: 'center',
       render: (status) => getStatusTag(status)
     },
     {
@@ -124,6 +128,7 @@ const StockOverview = () => {
       dataIndex: 'submitter_name',
       key: 'submitter_name',
       width: 90,
+      align: 'center',
       render: (val) => <Tag color="blue">{val}</Tag>
     },
     {
@@ -131,6 +136,7 @@ const StockOverview = () => {
       dataIndex: 'salesman_name',
       key: 'salesman_name',
       width: 90,
+      align: 'center',
       render: (val) => val ? <Tag color="green">{val}</Tag> : '-'
     },
     {
@@ -138,6 +144,7 @@ const StockOverview = () => {
       dataIndex: 'merchant',
       key: 'merchant',
       width: 110,
+      align: 'center',
       render: (val) => val || '-'
     },
     {
@@ -145,6 +152,7 @@ const StockOverview = () => {
       dataIndex: 'receiver_name',
       key: 'receiver_name',
       width: 80,
+      align: 'center',
       render: (val) => val || '-'
     },
     {
@@ -152,8 +160,13 @@ const StockOverview = () => {
       dataIndex: 'shipping_fee',
       key: 'shipping_fee',
       width: 70,
-      render: (val, record) => record.type === 'out' 
-        ? (val === 'company' ? <Tag color="red">公司</Tag> : <Tag>到付</Tag>)
+      align: 'center',
+      render: (val, record) => (record.type === 'out' || record.type === 'self_purchase')
+        ? (val === 'company' 
+            ? <Tag color="red">公司</Tag> 
+            : val === 'self_pickup' 
+              ? <Tag color="green">业务自取</Tag> 
+              : <Tag>到付</Tag>)
         : '-'
     },
     {
@@ -161,12 +174,14 @@ const StockOverview = () => {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 130,
+      align: 'center',
       render: (val) => dayjs(val).format('MM-DD HH:mm')
     },
     {
       title: '操作',
       key: 'action',
       width: 80,
+      align: 'center',
       render: (_, record) => (
         <Button type="link" icon={<EyeOutlined />} onClick={() => showDetail(record)}>
           详情
@@ -263,9 +278,13 @@ const StockOverview = () => {
             <Descriptions.Item label="收货地址" span={2}>{currentRequest.address || '-'}</Descriptions.Item>
             <Descriptions.Item label="收件人">{currentRequest.receiver_name || '-'}</Descriptions.Item>
             <Descriptions.Item label="联系电话">{currentRequest.receiver_phone || '-'}</Descriptions.Item>
-            {currentRequest.type === 'out' && (
+            {(currentRequest.type === 'out' || currentRequest.type === 'self_purchase') && (
               <Descriptions.Item label="邮费承担">
-                {currentRequest.shipping_fee === 'company' ? <Tag color="red">公司承担</Tag> : <Tag>到付</Tag>}
+                {currentRequest.shipping_fee === 'company' 
+                  ? <Tag color="red">公司承担</Tag> 
+                  : currentRequest.shipping_fee === 'self_pickup'
+                    ? <Tag color="green">业务自取</Tag>
+                    : <Tag>到付</Tag>}
               </Descriptions.Item>
             )}
             <Descriptions.Item label="备注" span={2}>{currentRequest.remark || '-'}</Descriptions.Item>

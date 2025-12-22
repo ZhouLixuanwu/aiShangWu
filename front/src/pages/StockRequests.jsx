@@ -508,6 +508,7 @@ const StockRequests = () => {
               <Radio.Group>
                 <Radio.Button value="receiver">到付（客户承担）</Radio.Button>
                 <Radio.Button value="company">公司承担</Radio.Button>
+                <Radio.Button value="self_pickup">业务自取</Radio.Button>
               </Radio.Group>
             </Form.Item>
           )}

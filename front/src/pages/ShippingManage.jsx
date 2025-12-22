@@ -228,7 +228,11 @@ const ShippingManage = () => {
       key: 'shipping_fee',
       width: 40,
       align: 'center',
-      render: (val) => val === 'company' ? <Tag color="red">公司</Tag> : <Tag>到付</Tag>
+      render: (val) => val === 'company' 
+        ? <Tag color="red">公司</Tag> 
+        : val === 'self_pickup' 
+          ? <Tag color="green">业务自取</Tag> 
+          : <Tag>到付</Tag>
     },
     {
       title: '状态',
@@ -379,7 +383,11 @@ const ShippingManage = () => {
             <Descriptions.Item label="收件人">{currentRequest.orig_receiver_name || currentRequest.receiver_name || '-'}</Descriptions.Item>
             <Descriptions.Item label="联系电话">{currentRequest.orig_receiver_phone || currentRequest.receiver_phone || '-'}</Descriptions.Item>
             <Descriptions.Item label="邮费承担">
-              {currentRequest.shipping_fee === 'company' ? <Tag color="red">公司承担</Tag> : <Tag>到付</Tag>}
+              {currentRequest.shipping_fee === 'company' 
+                ? <Tag color="red">公司承担</Tag> 
+                : currentRequest.shipping_fee === 'self_pickup'
+                  ? <Tag color="green">业务自取</Tag>
+                  : <Tag>到付</Tag>}
             </Descriptions.Item>
             <Descriptions.Item label="发货状态">{getShippingStatus(currentRequest.shipping_status)}</Descriptions.Item>
             <Descriptions.Item label="快递单号">{currentRequest.tracking_no || '-'}</Descriptions.Item>
@@ -409,7 +417,7 @@ const ShippingManage = () => {
             }</div>
             <div style={{ marginTop: 8, color: '#666' }}>
               <strong>商家：</strong>{currentRequest.merchant || '-'} | 
-              <strong> 邮费：</strong>{currentRequest.shipping_fee === 'company' ? '公司承担' : '到付'}
+              <strong> 邮费：</strong>{currentRequest.shipping_fee === 'company' ? '公司承担' : currentRequest.shipping_fee === 'self_pickup' ? '业务自取' : '到付'}
             </div>
           </div>
         )}
