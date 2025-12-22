@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { 
   PlayCircleOutlined, PauseCircleOutlined, SoundOutlined, 
   MutedOutlined, FullscreenOutlined, FullscreenExitOutlined,
@@ -13,7 +13,7 @@ import { Slider, Dropdown, Tooltip, message } from 'antd';
  * 
  * @param {boolean} compact - 紧凑模式，适用于小卡片，简化控制栏
  */
-const VideoPlayer = ({ src, style, maxHeight = 150, compact = false }) => {
+const VideoPlayer = memo(({ src, style, maxHeight = 150, compact = false }) => {
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -258,6 +258,7 @@ const VideoPlayer = ({ src, style, maxHeight = 150, compact = false }) => {
         controls={false} // 显式禁用原生控件
         controlsList="nodownload nofullscreen noremoteplayback" // 禁用原生控件菜单项
         disablePictureInPicture={false}
+        preload="metadata" // 只加载元数据和第一帧，加快缩略图显示
         // 禁用原生右键菜单
         onContextMenu={(e) => e.preventDefault()}
       />
@@ -379,6 +380,11 @@ const VideoPlayer = ({ src, style, maxHeight = 150, compact = false }) => {
       </div>
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+  // 只有当 src 变化时才重新渲染
+  return prevProps.src === nextProps.src && 
+         prevProps.maxHeight === nextProps.maxHeight &&
+         prevProps.compact === nextProps.compact;
+});
 
 export default VideoPlayer;

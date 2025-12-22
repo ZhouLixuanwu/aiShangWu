@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo, useCallback } from 'react';
 import { 
   Card, Upload, Button, message, Progress, List, Tag, 
   Image, Space, DatePicker, Statistic, Row, Col, Popconfirm, Empty,
@@ -18,6 +18,101 @@ import useUserStore from '../store/userStore';
 
 // 获取API基础URL
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
+// 独立的素材卡片组件，使用 memo 避免不必要的重渲染
+const MediaCard = memo(({ item, showUser, isMobile, onRename, onEditMerchant, onDelete }) => {
+  const getMediaMenuItems = () => [
+    { key: 'rename', label: '重命名', icon: <FormOutlined /> },
+    { key: 'editMerchant', label: '编辑商家', icon: <EditOutlined /> },
+    { type: 'divider' },
+    { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true },
+  ];
+
+  const handleMenuClick = ({ key }) => {
+    if (key === 'rename') onRename(item);
+    else if (key === 'editMerchant') onEditMerchant(item);
+    else if (key === 'delete') {
+      Modal.confirm({
+        title: '确定删除此素材？',
+        onOk: () => onDelete(item.id)
+      });
+    }
+  };
+
+  return (
+    <Card
+      size="small"
+      cover={
+        item.file_type === 'video' ? (
+          <VideoPlayer 
+            src={item.url} 
+            maxHeight={isMobile ? 120 : 150}
+            style={{ background: '#f5f5f5' }}
+            compact
+          />
+        ) : (
+          <Image
+            src={item.url}
+            alt={item.file_name}
+            style={{ height: isMobile ? 120 : 150, objectFit: 'cover' }}
+            placeholder
+          />
+        )
+      }
+      actions={[
+        <Tooltip title="重命名" key="rename">
+          <FormOutlined onClick={() => onRename(item)} />
+        </Tooltip>,
+        <Dropdown 
+          key="more"
+          menu={{ 
+            items: getMediaMenuItems(),
+            onClick: handleMenuClick
+          }}
+          trigger={['click']}
+        >
+          <MoreOutlined />
+        </Dropdown>
+      ]}
+    >
+      <Card.Meta
+        avatar={item.file_type === 'video' ? 
+          <VideoCameraOutlined style={{ fontSize: isMobile ? 16 : 20, color: '#1677ff' }} /> : 
+          <PictureOutlined style={{ fontSize: isMobile ? 16 : 20, color: '#52c41a' }} />
+        }
+        title={
+          <div>
+            {showUser && (
+              <Tag color="blue" style={{ marginBottom: 4 }}>{item.user_name}</Tag>
+            )}
+            <div style={{ fontSize: isMobile ? 11 : 12 }}>
+              {item.file_name.length > (isMobile ? 10 : 15)
+                ? item.file_name.substring(0, isMobile ? 10 : 15) + '...' 
+                : item.file_name
+              }
+            </div>
+          </div>
+        }
+        description={
+          <div style={{ fontSize: isMobile ? 10 : 11, color: '#999' }}>
+            <div>{dayjs(item.created_at).format('HH:mm:ss')}</div>
+            {item.merchant && (
+              <Tag color="purple" style={{ marginTop: 4 }}>{item.merchant}</Tag>
+            )}
+          </div>
+        }
+      />
+    </Card>
+  );
+}, (prevProps, nextProps) => {
+  // 只有当这些属性变化时才重新渲染
+  return prevProps.item.id === nextProps.item.id &&
+         prevProps.item.url === nextProps.item.url &&
+         prevProps.item.file_name === nextProps.item.file_name &&
+         prevProps.item.merchant === nextProps.item.merchant &&
+         prevProps.showUser === nextProps.showUser &&
+         prevProps.isMobile === nextProps.isMobile;
+});
 
 const MediaUpload = () => {
   const [uploading, setUploading] = useState(false);
@@ -226,6 +321,9 @@ const MediaUpload = () => {
     setUploading(true);
     const totalCount = uploadQueue.length;
     
+    // 跟踪失败的数量
+    let failedCount = 0;
+    
     for (let i = 0; i < uploadQueue.length; i++) {
       const item = uploadQueue[i];
       if (item.status === 'success') continue;
@@ -274,7 +372,9 @@ const MediaUpload = () => {
               ...prev,
               percent,
               uploadedSize: progressEvent.loaded,
-              speed
+              speed,
+              // 100%时显示处理中状态
+              status: percent >= 100 ? 'processing' : 'uploading'
             }));
 
             setUploadQueue(prev => prev.map(q => 
@@ -290,6 +390,7 @@ const MediaUpload = () => {
 
       } catch (error) {
         console.error('上传失败:', error);
+        failedCount++;
         setUploadQueue(prev => prev.map(q => 
           q.id === item.id ? { ...q, status: 'error' } : q
         ));
@@ -299,24 +400,18 @@ const MediaUpload = () => {
     // 全部上传完成
     setUploadProgress(prev => ({ ...prev, visible: false }));
     setUploading(false);
-    message.success('批量上传完成');
     
-    // 刷新列表
-    if (selectedDate.isSame(dayjs(), 'day')) {
-      if (viewMode === 'my') {
-        fetchRecords();
-      } else {
-        fetchAllRecords();
-        fetchAllStats();
-      }
-    }
-    
-    // 清空成功的项目和重置UID集合
-    const remainingQueue = uploadQueue.filter(q => q.status !== 'success');
-    if (remainingQueue.length === 0) {
-      closeBatchUpload();
+    if (failedCount > 0) {
+      // 有失败的项目，提示用户
+      message.warning(`${failedCount} 个文件上传失败，请重试`);
+      // 移除成功的项目
+      setUploadQueue(prev => prev.filter(q => q.status !== 'success'));
     } else {
-      setUploadQueue(remainingQueue);
+      // 全部成功，刷新页面以确保状态完全重置
+      message.success('批量上传完成，即将刷新页面...');
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
     }
   };
 
@@ -439,95 +534,18 @@ const MediaUpload = () => {
     }
   };
 
-  // 素材操作菜单
-  const getMediaMenuItems = () => {
-    return [
-      { key: 'rename', label: '重命名', icon: <FormOutlined /> },
-      { key: 'editMerchant', label: '编辑商家', icon: <EditOutlined /> },
-      { type: 'divider' },
-      { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true },
-    ];
-  };
+  // 使用 useCallback 包装事件处理器，避免不必要的重渲染
+  const handleRenameCallback = useCallback((item) => {
+    showRename(item);
+  }, []);
 
-  const handleMediaMenuClick = (key, item) => {
-    if (key === 'rename') {
-      showRename(item);
-    } else if (key === 'editMerchant') {
-      showEditMerchant(item);
-    } else if (key === 'delete') {
-      Modal.confirm({
-        title: '确定删除此素材？',
-        onOk: () => handleDelete(item.id)
-      });
-    }
-  };
+  const handleEditMerchantCallback = useCallback((item) => {
+    showEditMerchant(item);
+  }, []);
 
-  // 渲染单个素材卡片
-  const renderMediaCard = (item, showUser = false) => (
-    <Card
-      size="small"
-      cover={
-        item.file_type === 'video' ? (
-          <VideoPlayer 
-            src={item.url} 
-            maxHeight={isMobile ? 120 : 150}
-            style={{ background: '#f5f5f5' }}
-            compact
-          />
-        ) : (
-          <Image
-            src={item.url}
-            alt={item.file_name}
-            style={{ height: isMobile ? 120 : 150, objectFit: 'cover' }}
-            placeholder
-          />
-        )
-      }
-      actions={[
-        <Tooltip title="重命名" key="rename">
-          <FormOutlined onClick={() => showRename(item)} />
-        </Tooltip>,
-        <Dropdown 
-          key="more"
-          menu={{ 
-            items: getMediaMenuItems(item),
-            onClick: ({ key }) => handleMediaMenuClick(key, item)
-          }}
-          trigger={['click']}
-        >
-          <MoreOutlined />
-        </Dropdown>
-      ]}
-    >
-      <Card.Meta
-        avatar={item.file_type === 'video' ? 
-          <VideoCameraOutlined style={{ fontSize: isMobile ? 16 : 20, color: '#1677ff' }} /> : 
-          <PictureOutlined style={{ fontSize: isMobile ? 16 : 20, color: '#52c41a' }} />
-        }
-        title={
-          <div>
-            {showUser && (
-              <Tag color="blue" style={{ marginBottom: 4 }}>{item.user_name}</Tag>
-            )}
-            <div style={{ fontSize: isMobile ? 11 : 12 }}>
-              {item.file_name.length > (isMobile ? 10 : 15)
-                ? item.file_name.substring(0, isMobile ? 10 : 15) + '...' 
-                : item.file_name
-              }
-            </div>
-          </div>
-        }
-        description={
-          <div style={{ fontSize: isMobile ? 10 : 11, color: '#999' }}>
-            <div>{dayjs(item.created_at).format('HH:mm:ss')}</div>
-            {item.merchant && (
-              <Tag color="purple" style={{ marginTop: 4 }}>{item.merchant}</Tag>
-            )}
-          </div>
-        }
-      />
-    </Card>
-  );
+  const handleDeleteCallback = useCallback((id) => {
+    handleDelete(id);
+  }, [viewMode, selectedDate]);
 
   return (
     <div className="page-card">
@@ -734,7 +752,16 @@ const MediaUpload = () => {
                       dataSource={records}
                       loading={loading}
                       renderItem={(item) => (
-                        <List.Item>{renderMediaCard(item, false)}</List.Item>
+                        <List.Item key={item.id}>
+                          <MediaCard 
+                            item={item} 
+                            showUser={false} 
+                            isMobile={isMobile}
+                            onRename={handleRenameCallback}
+                            onEditMerchant={handleEditMerchantCallback}
+                            onDelete={handleDeleteCallback}
+                          />
+                        </List.Item>
                       )}
                     />
                   );
@@ -763,7 +790,16 @@ const MediaUpload = () => {
                           grid={{ gutter: 16, xs: 2, sm: 2, md: 3, lg: 4, xl: 4, xxl: 6 }}
                           dataSource={groupedByMerchant[merchant]}
                           renderItem={(item) => (
-                            <List.Item>{renderMediaCard(item, false)}</List.Item>
+                            <List.Item key={item.id}>
+                          <MediaCard 
+                            item={item} 
+                            showUser={false} 
+                            isMobile={isMobile}
+                            onRename={handleRenameCallback}
+                            onEditMerchant={handleEditMerchantCallback}
+                            onDelete={handleDeleteCallback}
+                          />
+                        </List.Item>
                           )}
                         />
                       </Collapse.Panel>
@@ -814,7 +850,16 @@ const MediaUpload = () => {
                       dataSource={allRecords}
                       loading={loading}
                       renderItem={(item) => (
-                        <List.Item>{renderMediaCard(item, true)}</List.Item>
+                        <List.Item key={item.id}>
+                          <MediaCard 
+                            item={item} 
+                            showUser={true} 
+                            isMobile={isMobile}
+                            onRename={handleRenameCallback}
+                            onEditMerchant={handleEditMerchantCallback}
+                            onDelete={handleDeleteCallback}
+                          />
+                        </List.Item>
                       )}
                     />
                   );
@@ -842,7 +887,16 @@ const MediaUpload = () => {
                           grid={{ gutter: 16, xs: 2, sm: 2, md: 3, lg: 4, xl: 4, xxl: 6 }}
                           dataSource={groupedByMerchant[merchant]}
                           renderItem={(item) => (
-                            <List.Item>{renderMediaCard(item, true)}</List.Item>
+                            <List.Item key={item.id}>
+                          <MediaCard 
+                            item={item} 
+                            showUser={true} 
+                            isMobile={isMobile}
+                            onRename={handleRenameCallback}
+                            onEditMerchant={handleEditMerchantCallback}
+                            onDelete={handleDeleteCallback}
+                          />
+                        </List.Item>
                           )}
                         />
                       </Collapse.Panel>
@@ -967,9 +1021,16 @@ const MediaUpload = () => {
         width={isMobile ? '90%' : 400}
       >
         <div style={{ textAlign: 'center', padding: '20px 0' }}>
-          <CloudUploadOutlined style={{ fontSize: 48, color: '#1677ff', marginBottom: 16 }} />
+          {uploadProgress.status === 'processing' ? (
+            <LoadingOutlined style={{ fontSize: 48, color: '#52c41a', marginBottom: 16 }} />
+          ) : (
+            <CloudUploadOutlined style={{ fontSize: 48, color: '#1677ff', marginBottom: 16 }} />
+          )}
           <h3 style={{ marginBottom: 8 }}>
-            正在上传 ({uploadProgress.currentIndex}/{uploadProgress.totalCount})
+            {uploadProgress.status === 'processing' 
+              ? `服务器处理中 (${uploadProgress.currentIndex}/${uploadProgress.totalCount})`
+              : `正在上传 (${uploadProgress.currentIndex}/${uploadProgress.totalCount})`
+            }
           </h3>
           <p style={{ 
             color: '#666', 
@@ -982,7 +1043,7 @@ const MediaUpload = () => {
           
           <Progress 
             percent={uploadProgress.percent} 
-            status="active"
+            status={uploadProgress.status === 'processing' ? 'success' : 'active'}
             strokeColor={{
               '0%': '#108ee9',
               '100%': '#87d068',
@@ -997,18 +1058,23 @@ const MediaUpload = () => {
             fontSize: 12
           }}>
             <span>
-              {formatFileSize(uploadProgress.uploadedSize)} / {formatFileSize(uploadProgress.fileSize)}
+              {uploadProgress.status === 'processing' 
+                ? '等待服务器响应...'
+                : `${formatFileSize(uploadProgress.uploadedSize)} / ${formatFileSize(uploadProgress.fileSize)}`
+              }
             </span>
-            <span>{formatSpeed(uploadProgress.speed)}</span>
+            <span>{uploadProgress.status === 'processing' ? '' : formatSpeed(uploadProgress.speed)}</span>
           </div>
           
-          <Button 
-            type="default" 
-            onClick={handleCancelUpload}
-            style={{ marginTop: 20 }}
-          >
-            取消上传
-          </Button>
+          {uploadProgress.status !== 'processing' && (
+            <Button 
+              type="default" 
+              onClick={handleCancelUpload}
+              style={{ marginTop: 20 }}
+            >
+              取消上传
+            </Button>
+          )}
         </div>
       </Modal>
 
