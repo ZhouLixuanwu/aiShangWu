@@ -165,19 +165,23 @@ const ShippingManage = () => {
   };
 
   const columns = [
+    // {
+    //   title: '申请单号',
+    //   dataIndex: 'request_no',
+    //   key: 'request_no',
+    //   width: 150,
+    // },
     {
       title: '类型',
       dataIndex: 'type',
       key: 'type',
       width: 50,
-      align: 'center',
       render: (type) => getTypeTag(type)
     },
     {
       title: '商品',
       key: 'items',
       width: 80,
-      align: 'center',
       render: (_, record) => renderItems(record)
     },
     {
@@ -185,7 +189,6 @@ const ShippingManage = () => {
       dataIndex: 'submitter_name',
       key: 'submitter_name',
       width: 60,
-      align: 'center',
       render: (val) => <Tag color="blue">{val}</Tag>
     },
     {
@@ -193,7 +196,6 @@ const ShippingManage = () => {
       dataIndex: 'salesman_name',
       key: 'salesman_name',
       width: 65,
-      align: 'center',
       render: (val) => val ? <Tag color="green">{val}</Tag> : '-'
     },
     {
@@ -201,14 +203,12 @@ const ShippingManage = () => {
       dataIndex: 'merchant',
       key: 'merchant',
       width: 90,
-      align: 'center',
       render: (val) => val || '-'
     },
     {
       title: '收货人',
       key: 'receiver_info',
       width: 75,
-      align: 'center',
       render: (_, record) => (
         <div style={{ fontSize: 12 }}>
           <div>{record.orig_receiver_name || record.receiver_name || '-'}</div>
@@ -221,7 +221,6 @@ const ShippingManage = () => {
       dataIndex: 'shipping_fee',
       key: 'shipping_fee',
       width: 40,
-      align: 'center',
       render: (val) => val === 'company' ? <Tag color="red">公司</Tag> : <Tag>到付</Tag>
     },
     {
@@ -229,7 +228,6 @@ const ShippingManage = () => {
       dataIndex: 'shipping_status',
       key: 'shipping_status',
       width: 60,
-      align: 'center',
       render: (status) => getShippingStatus(status)
     },
     {
@@ -237,14 +235,12 @@ const ShippingManage = () => {
       dataIndex: 'tracking_no',
       key: 'tracking_no',
       width: 90,
-      align: 'center',
       render: (val) => val || '-'
     },
     {
       title: '操作',
       key: 'action',
       width: 120,
-      align: 'center',
       render: (_, record) => (
         <Space>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => showDetail(record)}>
