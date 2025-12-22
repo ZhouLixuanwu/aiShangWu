@@ -94,6 +94,12 @@ const PendingApprovals = () => {
       fetchRequests();
     } catch (error) {
       console.error('审批失败:', error);
+        // 显示后端返回的错误信息（如库存不足提示）
+        if (error.response?.data?.message) {
+          message.error(error.response.data.message);
+        } else {
+          message.error('审批失败，请稍后重试');
+        }
     } finally {
       setApproving(false);
     }

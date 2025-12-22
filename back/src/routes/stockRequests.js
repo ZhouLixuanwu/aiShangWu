@@ -316,15 +316,17 @@ router.post('/', authenticateToken, async (req, res) => {
     const productMap = {};
     products.forEach(p => { productMap[p.id] = p; });
 
-    // 检查出库时库存是否足够（提交时预检查）
-    if (type === 'out') {
-      for (const item of itemsList) {
-        const product = productMap[item.productId];
-        if (item.quantity > product.stock) {
-          return error(res, `${product.name} 库存不足（当前: ${product.stock}，需要: ${item.quantity}）`, 400);
-        }
-      }
-    }
+    // 出库时库存不足也允许提交申请，审批时会再次检查库存
+    // 这里不再阻止提交，让用户可以先提交申请等待库存补足后审批
+    // // 检查出库时库存是否足够（提交时预检查）
+    // if (type === 'out') {
+    //   for (const item of itemsList) {
+    //     const product = productMap[item.productId];
+    //     if (item.quantity > product.stock) {
+    //       return error(res, `${product.name} 库存不足（当前: ${product.stock}，需要: ${item.quantity}）`, 400);
+    //     }
+    //   }
+    // }
 
     // 如果指定了业务员，获取业务员姓名
     let salesmanName = null;
