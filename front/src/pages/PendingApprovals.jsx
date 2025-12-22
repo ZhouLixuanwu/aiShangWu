@@ -391,7 +391,11 @@ const PendingApprovals = () => {
             <Descriptions.Item label="联系电话">{currentRequest.receiver_phone || '-'}</Descriptions.Item>
             {(currentRequest.type === 'out' || currentRequest.type === 'self_purchase') && (
               <Descriptions.Item label="邮费承担">
-                {currentRequest.shipping_fee === 'company' ? <Tag color="red">公司承担</Tag> : <Tag>到付</Tag>}
+                {currentRequest.shipping_fee === 'company' 
+                  ? <Tag color="red">公司承担</Tag> 
+                  : currentRequest.shipping_fee === 'self_pickup'
+                    ? <Tag color="green">业务自取</Tag>
+                    : <Tag>到付</Tag>}
               </Descriptions.Item>
             )}
             <Descriptions.Item label="申请时间">{dayjs(currentRequest.created_at).format('YYYY-MM-DD HH:mm')}</Descriptions.Item>

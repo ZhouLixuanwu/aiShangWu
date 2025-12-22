@@ -263,9 +263,13 @@ const StockOverview = () => {
             <Descriptions.Item label="收货地址" span={2}>{currentRequest.address || '-'}</Descriptions.Item>
             <Descriptions.Item label="收件人">{currentRequest.receiver_name || '-'}</Descriptions.Item>
             <Descriptions.Item label="联系电话">{currentRequest.receiver_phone || '-'}</Descriptions.Item>
-            {currentRequest.type === 'out' && (
+            {(currentRequest.type === 'out' || currentRequest.type === 'self_purchase') && (
               <Descriptions.Item label="邮费承担">
-                {currentRequest.shipping_fee === 'company' ? <Tag color="red">公司承担</Tag> : <Tag>到付</Tag>}
+                {currentRequest.shipping_fee === 'company' 
+                  ? <Tag color="red">公司承担</Tag> 
+                  : currentRequest.shipping_fee === 'self_pickup'
+                    ? <Tag color="green">业务自取</Tag>
+                    : <Tag>到付</Tag>}
               </Descriptions.Item>
             )}
             <Descriptions.Item label="备注" span={2}>{currentRequest.remark || '-'}</Descriptions.Item>
