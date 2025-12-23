@@ -3,9 +3,119 @@ import {
   Form, Select, InputNumber, Input, Button, Card, 
   message, Result, Divider, Space, Empty, Radio, Table, Tag
 } from 'antd';
-import { SendOutlined, ShoppingOutlined, PlusCircleOutlined, MinusCircleOutlined, UserOutlined, EnvironmentOutlined, DeleteOutlined, PlusOutlined, GiftOutlined } from '@ant-design/icons';
+import { SendOutlined, ShoppingOutlined, PlusCircleOutlined, MinusCircleOutlined, UserOutlined, EnvironmentOutlined, DeleteOutlined, PlusOutlined, GiftOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import AddressParse from 'address-parse';
 import request from '../utils/request';
 import useUserStore from '../store/userStore';
+
+// 智能解析地址信息
+const parseAddressInfo = (text) => {
+  if (!text || typeof text !== 'string') {
+    return null;
+  }
+  
+  // 清理文本，移除多余空白
+  let cleanText = text.trim();
+  
+  // 尝试提取格式化的信息（带标签的格式）
+  let name = '';
+  let phone = '';
+  let address = '';
+  
+  // 匹配 "收件人: xxx" 或 "姓名: xxx" 格式
+  const nameMatch = cleanText.match(/(?:收件人|姓名|收货人|联系人)[：:]\s*([^\n\r,，]+)/);
+  if (nameMatch) {
+    name = nameMatch[1].trim();
+  }
+  
+  // 匹配 "手机号码: xxx" 或 "电话: xxx" 格式
+  const phoneMatch = cleanText.match(/(?:手机号码|手机|电话|联系电话|手机号|联系方式)[：:]\s*([0-9\-]+)/);
+  if (phoneMatch) {
+    phone = phoneMatch[1].trim();
+  }
+  
+  // 匹配 "详细地址: xxx" 格式
+  const detailMatch = cleanText.match(/(?:详细地址|地址)[：:]\s*([^\n\r]+)/);
+  // 匹配 "所在地区: xxx" 格式
+  const areaMatch = cleanText.match(/(?:所在地区|省市区|地区)[：:]\s*([^\n\r]+)/);
+  
+  if (detailMatch || areaMatch) {
+    // 组合地区和详细地址
+    const area = areaMatch ? areaMatch[1].trim() : '';
+    const detail = detailMatch ? detailMatch[1].trim() : '';
+    address = area + detail;
+  }
+  
+  // 如果格式化匹配成功
+  if (name && phone && address) {
+    return { name, phone, address };
+  }
+  
+  // 使用 address-parse 库进行智能解析
+  try {
+    const results = AddressParse.parse(cleanText);
+    if (results && results.length > 0) {
+      const result = results[0];
+      return {
+        name: result.name || '',
+        phone: result.mobile || result.phone || '',
+        address: [
+          result.province || '',
+          result.city || '',
+          result.area || '',
+          result.details || ''
+        ].filter(Boolean).join('')
+      };
+    }
+  } catch (e) {
+    console.error('address-parse 解析错误:', e);
+  }
+  
+  // 如果 address-parse 也无法解析，尝试手动提取
+  // 提取手机号（11位数字，以1开头）
+  const mobileMatch = cleanText.match(/1[3-9]\d{9}/);
+  if (mobileMatch) {
+    phone = mobileMatch[0];
+    cleanText = cleanText.replace(phone, ' ');
+  }
+  
+  // 提取座机号
+  if (!phone) {
+    const telMatch = cleanText.match(/(\d{3,4}[-\s]?\d{7,8})/);
+    if (telMatch) {
+      phone = telMatch[0];
+      cleanText = cleanText.replace(phone, ' ');
+    }
+  }
+  
+  // 剩余文本尝试分离姓名和地址
+  // 中国人名一般2-4个字，通常在开头或结尾
+  cleanText = cleanText.replace(/\s+/g, ' ').trim();
+  
+  // 尝试从开头匹配姓名（2-4个汉字）
+  const nameStartMatch = cleanText.match(/^([\u4e00-\u9fa5]{2,4})\s*/);
+  if (nameStartMatch && !name) {
+    name = nameStartMatch[1];
+    address = cleanText.slice(nameStartMatch[0].length).trim();
+  } else if (!name) {
+    // 尝试从结尾匹配姓名
+    const nameEndMatch = cleanText.match(/\s*([\u4e00-\u9fa5]{2,4})$/);
+    if (nameEndMatch) {
+      name = nameEndMatch[1];
+      address = cleanText.slice(0, -nameEndMatch[0].length).trim();
+    } else {
+      // 无法区分，全部作为地址
+      address = cleanText;
+    }
+  }
+  
+  // 如果还没有地址，使用清理后的文本
+  if (!address) {
+    address = cleanText;
+  }
+  
+  return { name, phone, address };
+};
 
 const StockRequests = () => {
   const [products, setProducts] = useState([]);
@@ -491,6 +601,54 @@ const StockRequests = () => {
             <Input placeholder="商家/客户名称" />
           </Form.Item>
 
+          {/* 智能粘贴按钮 */}
+          <div style={{ marginBottom: 16 }}>
+            <Button 
+              type="dashed" 
+              icon={<ThunderboltOutlined />}
+              onClick={async () => {
+                try {
+                  const text = await navigator.clipboard.readText();
+                  if (!text) {
+                    message.warning('剪贴板为空');
+                    return;
+                  }
+                  
+                  const parsed = parseAddressInfo(text);
+                  if (parsed) {
+                    const updates = {};
+                    if (parsed.address) updates.address = parsed.address;
+                    if (parsed.name) updates.receiverName = parsed.name;
+                    if (parsed.phone) updates.receiverPhone = parsed.phone;
+                    
+                    if (Object.keys(updates).length > 0) {
+                      form.setFieldsValue(updates);
+                      message.success(`已识别：${parsed.name ? '收件人 ' : ''}${parsed.phone ? '电话 ' : ''}${parsed.address ? '地址' : ''}`);
+                    } else {
+                      message.warning('无法识别剪贴板内容，请检查格式');
+                    }
+                  } else {
+                    message.warning('无法识别剪贴板内容');
+                  }
+                } catch (err) {
+                  if (err.name === 'NotAllowedError') {
+                    message.error('请允许访问剪贴板权限');
+                  } else {
+                    message.error('读取剪贴板失败: ' + err.message);
+                  }
+                }
+              }}
+              style={{ 
+                width: '100%', 
+                borderColor: '#1890ff',
+                color: '#1890ff',
+                background: '#e6f7ff'
+              }}
+            >
+              ✨ 智能粘贴（自动识别收件人、电话、地址）
+            </Button>
+          </div>
+
           <Form.Item name="address" label="收货地址">
             <Input.TextArea rows={2} placeholder="详细收货地址" />
           </Form.Item>
@@ -508,7 +666,7 @@ const StockRequests = () => {
               <Radio.Group>
                 <Radio.Button value="receiver">到付（客户承担）</Radio.Button>
                 <Radio.Button value="company">公司承担</Radio.Button>
-                <Radio.Button value="self_pickup">业务自取</Radio.Button>
+                <Radio.Button value="self_pickup">业务员自取</Radio.Button>
               </Radio.Group>
             </Form.Item>
           )}

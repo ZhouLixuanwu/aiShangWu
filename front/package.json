@@ -12,6 +12,7 @@
     "@ant-design/icons": "^5.2.6",
     "@wangeditor/editor": "^5.1.23",
     "@wangeditor/editor-for-react": "^1.0.6",
+    "address-parse": "^1.2.19",
     "antd": "^5.12.2",
     "axios": "^1.6.2",
     "dayjs": "^1.11.10",
