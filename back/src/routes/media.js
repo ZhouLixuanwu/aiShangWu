@@ -469,18 +469,27 @@ router.get('/all', authenticateToken, checkPermission('media_view_all'), async (
   }
 });
 
-// 管理员：获取所有业务员的上传统计
+// 管理员：获取所有业务员的上传统计（按组长分组，只显示业务员）
 router.get('/all-stats', authenticateToken, checkPermission('media_view_all'), async (req, res) => {
   try {
     const { date } = req.query;
     const targetDate = date || new Date().toISOString().split('T')[0];
 
-    // 获取每个业务员的上传统计
-    const [stats] = await pool.query(
+    // 获取所有组长（用于分组）
+    const [leaders] = await pool.query(
+      `SELECT id as user_id, real_name as user_name, username
+       FROM users WHERE status = 1 AND user_type = 'leader'
+       ORDER BY id ASC`
+    );
+
+    // 获取所有业务员的上传统计（只获取 salesman）
+    const [salesmen] = await pool.query(
       `SELECT 
         u.id as user_id,
         u.real_name as user_name,
         u.username,
+        u.user_type,
+        u.leader_id,
         COALESCE(m.count, 0) as upload_count
       FROM users u
       LEFT JOIN (
@@ -489,23 +498,67 @@ router.get('/all-stats', authenticateToken, checkPermission('media_view_all'), a
         WHERE upload_date = ?
         GROUP BY user_id
       ) m ON u.id = m.user_id
-      WHERE u.status = 1
-      ORDER BY upload_count DESC, u.id ASC`,
+      WHERE u.status = 1 AND u.user_type = 'salesman'
+      ORDER BY u.id ASC`,
       [targetDate]
     );
 
-    // 总计
-    const [total] = await pool.query(
-      'SELECT COUNT(*) as count FROM media_uploads WHERE upload_date = ?',
-      [targetDate]
-    );
+    // 构建分组数据（按组长分组，只显示业务员）
+    const groups = leaders.map(leader => {
+      const members = salesmen.filter(s => s.leader_id === leader.user_id);
+      const membersData = members.map(m => ({
+        ...m,
+        dailyTarget: DAILY_TARGET,
+        completed: m.upload_count >= DAILY_TARGET
+      }));
+      
+      // 计算团队总上传数（只统计业务员）
+      const teamUploadCount = members.reduce((sum, m) => sum + m.upload_count, 0);
+      const teamCompletedCount = members.filter(m => m.upload_count >= DAILY_TARGET).length;
+      
+      return {
+        leader: {
+          user_id: leader.user_id,
+          user_name: leader.user_name,
+          username: leader.username
+        },
+        members: membersData,
+        teamStats: {
+          totalMembers: members.length,
+          totalUpload: teamUploadCount,
+          completedCount: teamCompletedCount
+        }
+      };
+    }).filter(g => g.members.length > 0); // 只显示有成员的组
 
-    success(res, {
-      salesmen: stats.map(s => ({
+    // 没有分配组长的业务员
+    const unassigned = salesmen
+      .filter(s => !s.leader_id || !leaders.find(l => l.user_id === s.leader_id))
+      .map(s => ({
         ...s,
         dailyTarget: DAILY_TARGET,
         completed: s.upload_count >= DAILY_TARGET
-      })),
+      }));
+
+    // 总计（只统计 salesman）
+    const [total] = await pool.query(
+      `SELECT COUNT(*) as count FROM media_uploads m
+       JOIN users u ON m.user_id = u.id
+       WHERE m.upload_date = ? AND u.user_type = 'salesman'`,
+      [targetDate]
+    );
+
+    // 所有业务员的统计（用于顶部概览）
+    const allSalesmen = salesmen.map(s => ({
+      ...s,
+      dailyTarget: DAILY_TARGET,
+      completed: s.upload_count >= DAILY_TARGET
+    }));
+
+    success(res, {
+      groups,
+      unassigned,
+      salesmen: allSalesmen,
       total: {
         count: total[0].count,
         targetDate

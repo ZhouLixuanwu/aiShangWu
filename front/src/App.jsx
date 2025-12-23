@@ -13,6 +13,7 @@ import TeamLogs from './pages/TeamLogs';
 import Users from './pages/Users';
 import MediaUpload from './pages/MediaUpload';
 import TeamMedia from './pages/TeamMedia';
+import AllMedia from './pages/AllMedia';
 import VoiceEdit from './pages/VoiceEdit';
 import CopywritingLibrary from './pages/CopywritingLibrary';
 import MediaCopywriting from './pages/MediaCopywriting';
@@ -120,6 +121,13 @@ function App() {
           <Route path="team-media" element={
             <PrivateRoute permission="media_view_team">
               <TeamMedia />
+            </PrivateRoute>
+          } />
+          
+          {/* 全员素材 */}
+          <Route path="all-media" element={
+            <PrivateRoute permission="media_view_all">
+              <AllMedia />
             </PrivateRoute>
           } />
           

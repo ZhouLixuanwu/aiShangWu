@@ -21,7 +21,8 @@ import {
   AudioOutlined,
   BookOutlined,
   FormOutlined,
-  AuditOutlined
+  AuditOutlined,
+  GlobalOutlined
 } from '@ant-design/icons';
 import useUserStore from '../store/userStore';
 
@@ -111,7 +112,7 @@ const MainLayout = () => {
       ].filter(Boolean),
     },
     
-    (hasPermission('media_upload') || hasPermission('media_view_team') || hasPermission('voice_edit') || hasPermission('copywriting_manage') || hasPermission('copywriting_edit')) && {
+    (hasPermission('media_upload') || hasPermission('media_view_team') || hasPermission('media_view_all') || hasPermission('voice_edit') || hasPermission('copywriting_manage') || hasPermission('copywriting_edit')) && {
       key: 'media',
       icon: <PictureOutlined />,
       label: '素材管理',
@@ -125,6 +126,11 @@ const MainLayout = () => {
           key: '/team-media',
           icon: <TeamOutlined />,
           label: '团队素材',
+        },
+        hasPermission('media_view_all') && {
+          key: '/all-media',
+          icon: <GlobalOutlined />,
+          label: '全员素材',
         },
         hasPermission('voice_edit') && {
           key: '/voice-edit',
