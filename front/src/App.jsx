@@ -18,6 +18,8 @@ import VoiceEdit from './pages/VoiceEdit';
 import CopywritingLibrary from './pages/CopywritingLibrary';
 import MediaCopywriting from './pages/MediaCopywriting';
 import PendingApprovals from './pages/PendingApprovals';
+import MerchantRegister from './pages/MerchantRegister';
+import MerchantList from './pages/MerchantList';
 
 // 路由守卫组件
 const PrivateRoute = ({ children, permission }) => {
@@ -148,6 +150,20 @@ function App() {
           <Route path="media-copywriting" element={
             <PrivateRoute permission="copywriting_edit">
               <MediaCopywriting />
+            </PrivateRoute>
+          } />
+          
+          {/* 办理营业执照 - 提交 */}
+          <Route path="merchant-register" element={
+            <PrivateRoute permission="merchant_upload">
+              <MerchantRegister />
+            </PrivateRoute>
+          } />
+          
+          {/* 办理营业执照 - 管理列表 */}
+          <Route path="merchant-list" element={
+            <PrivateRoute permission="merchant_view_all">
+              <MerchantList />
             </PrivateRoute>
           } />
         </Route>

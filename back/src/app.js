@@ -28,6 +28,7 @@ const logRoutes = require('./routes/logs');
 const statsRoutes = require('./routes/stats');
 const mediaRoutes = require('./routes/media');
 const copywritingRoutes = require('./routes/copywriting');
+const merchantRoutes = require('./routes/merchant');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -37,6 +38,7 @@ app.use('/api/logs', logRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/copywriting', copywritingRoutes);
+app.use('/api/merchant', merchantRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {

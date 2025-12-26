@@ -22,7 +22,9 @@ import {
   BookOutlined,
   FormOutlined,
   AuditOutlined,
-  GlobalOutlined
+  GlobalOutlined,
+  ShopOutlined,
+  SolutionOutlined
 } from '@ant-design/icons';
 import useUserStore from '../store/userStore';
 
@@ -149,6 +151,23 @@ const MainLayout = () => {
         },
       ].filter(Boolean),
     },
+    (hasPermission('merchant_upload') || hasPermission('merchant_view_all')) && {
+      key: 'merchant',
+      icon: <ShopOutlined />,
+      label: '办理营业执照',
+      children: [
+        hasPermission('merchant_upload') && {
+          key: '/merchant-register',
+          icon: <UploadOutlined />,
+          label: '提交入驻',
+        },
+        hasPermission('merchant_view_all') && {
+          key: '/merchant-list',
+          icon: <SolutionOutlined />,
+          label: '入驻管理',
+        },
+      ].filter(Boolean),
+    },
     hasPermission('user_manage') && {
       key: '/users',
       icon: <UserOutlined />,
@@ -201,6 +220,9 @@ const MainLayout = () => {
     }
     if (path.includes('media') || path.includes('copywriting')) {
       return ['media'];
+    }
+    if (path.includes('merchant')) {
+      return ['merchant'];
     }
     return [];
   };
