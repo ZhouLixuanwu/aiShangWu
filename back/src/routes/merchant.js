@@ -49,11 +49,13 @@ router.post('/register', authenticateToken, checkPermission('merchant_upload'), 
       businessName2, 
       businessName3,
       contactName,
-      contactPhone 
+      contactPhone,
+      contactEmail,
+      isUrgent
     } = req.body;
 
     // 验证必填字段
-    if (!phone || !businessScope || !businessName1 || !contactName || !contactPhone) {
+    if (!phone || !businessScope || !businessName1 || !contactName || !contactPhone || !contactEmail) {
       return error(res, '请填写所有必填信息', 400);
     }
 
@@ -61,6 +63,15 @@ router.post('/register', authenticateToken, checkPermission('merchant_upload'), 
     if (!/^1[3-9]\d{9}$/.test(phone) || !/^1[3-9]\d{9}$/.test(contactPhone)) {
       return error(res, '请输入正确的手机号格式', 400);
     }
+
+    // 验证邮箱格式
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+      return error(res, '请输入正确的邮箱格式', 400);
+    }
+
+    // 判断是否加急，加急则状态为3（加急审核），否则为0（待审核）
+    const isUrgentBool = isUrgent === 'true' || isUrgent === true;
+    const initialStatus = isUrgentBool ? 3 : 0;
 
     // 处理身份证正面照片上传
     let idCardFrontKey = null;
@@ -96,8 +107,8 @@ router.post('/register', authenticateToken, checkPermission('merchant_upload'), 
     const [result] = await pool.query(
       `INSERT INTO merchant_registrations 
        (user_id, user_name, phone, business_scope, business_name_1, business_name_2, business_name_3, 
-        contact_name, contact_phone, id_card_front_key, id_card_back_key)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        contact_name, contact_phone, contact_email, is_urgent, status, id_card_front_key, id_card_back_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.user.id, 
         req.user.realName, 
@@ -108,6 +119,9 @@ router.post('/register', authenticateToken, checkPermission('merchant_upload'), 
         businessName3 || null,
         contactName,
         contactPhone,
+        contactEmail,
+        isUrgentBool ? 1 : 0,
+        initialStatus,
         idCardFrontKey,
         idCardBackKey
       ]
@@ -128,23 +142,32 @@ router.post('/register', authenticateToken, checkPermission('merchant_upload'), 
 // 获取我的提交记录
 router.get('/my', authenticateToken, checkPermission('merchant_upload'), async (req, res) => {
   try {
-    const { page = 1, pageSize = 20 } = req.query;
+    const { page = 1, pageSize = 20, isUrgent } = req.query;
     const offset = (page - 1) * pageSize;
 
-    const [records] = await pool.query(
-      `SELECT id, phone, business_scope, business_name_1, business_name_2, business_name_3,
-              contact_name, contact_phone, id_card_front_key, id_card_back_key, status, created_at, remark
+    let sql = `SELECT id, phone, business_scope, business_name_1, business_name_2, business_name_3,
+              contact_name, contact_phone, contact_email, is_urgent, id_card_front_key, id_card_back_key, status, created_at, remark
        FROM merchant_registrations
-       WHERE user_id = ?
-       ORDER BY id DESC
-       LIMIT ? OFFSET ?`,
-      [req.user.id, parseInt(pageSize), offset]
-    );
+       WHERE user_id = ?`;
+    let countSql = 'SELECT COUNT(*) as total FROM merchant_registrations WHERE user_id = ?';
+    const params = [req.user.id];
+    const countParams = [req.user.id];
 
-    const [countResult] = await pool.query(
-      'SELECT COUNT(*) as total FROM merchant_registrations WHERE user_id = ?',
-      [req.user.id]
-    );
+    // 筛选加急记录
+    if (isUrgent !== undefined && isUrgent !== '') {
+      sql += ' AND is_urgent = ?';
+      countSql += ' AND is_urgent = ?';
+      params.push(parseInt(isUrgent));
+      countParams.push(parseInt(isUrgent));
+    }
+
+    // 排序：加急的排在前面，然后按提交时间升序
+    sql += ' ORDER BY is_urgent DESC, created_at ASC LIMIT ? OFFSET ?';
+    params.push(parseInt(pageSize), offset);
+
+    const [records] = await pool.query(sql, params);
+
+    const [countResult] = await pool.query(countSql, countParams);
 
     // 为记录生成访问URL
     const recordsWithUrl = await Promise.all(records.map(async (r) => ({
@@ -164,13 +187,13 @@ router.get('/my', authenticateToken, checkPermission('merchant_upload'), async (
 // 获取所有商家信息（需要权限）
 router.get('/all', authenticateToken, checkPermission('merchant_view_all'), async (req, res) => {
   try {
-    const { page = 1, pageSize = 20, keyword, status, userId } = req.query;
+    const { page = 1, pageSize = 20, keyword, status, userId, isUrgent } = req.query;
     const offset = (page - 1) * pageSize;
 
     let sql = `
       SELECT m.id, m.user_id, m.user_name, m.phone, m.business_scope, 
              m.business_name_1, m.business_name_2, m.business_name_3,
-             m.contact_name, m.contact_phone, m.id_card_front_key, m.id_card_back_key,
+             m.contact_name, m.contact_phone, m.contact_email, m.is_urgent, m.id_card_front_key, m.id_card_back_key,
              m.status, m.created_at, m.remark
       FROM merchant_registrations m
       WHERE 1=1
@@ -180,11 +203,11 @@ router.get('/all', authenticateToken, checkPermission('merchant_view_all'), asyn
     const countParams = [];
 
     if (keyword) {
-      sql += ' AND (m.phone LIKE ? OR m.business_name_1 LIKE ? OR m.contact_name LIKE ? OR m.user_name LIKE ?)';
-      countSql += ' AND (m.phone LIKE ? OR m.business_name_1 LIKE ? OR m.contact_name LIKE ? OR m.user_name LIKE ?)';
+      sql += ' AND (m.phone LIKE ? OR m.business_name_1 LIKE ? OR m.contact_name LIKE ? OR m.user_name LIKE ? OR m.contact_email LIKE ?)';
+      countSql += ' AND (m.phone LIKE ? OR m.business_name_1 LIKE ? OR m.contact_name LIKE ? OR m.user_name LIKE ? OR m.contact_email LIKE ?)';
       const kw = `%${keyword}%`;
-      params.push(kw, kw, kw, kw);
-      countParams.push(kw, kw, kw, kw);
+      params.push(kw, kw, kw, kw, kw);
+      countParams.push(kw, kw, kw, kw, kw);
     }
 
     if (status !== undefined && status !== '') {
@@ -201,7 +224,16 @@ router.get('/all', authenticateToken, checkPermission('merchant_view_all'), asyn
       countParams.push(parseInt(userId));
     }
 
-    sql += ' ORDER BY m.id DESC LIMIT ? OFFSET ?';
+    // 筛选加急记录
+    if (isUrgent !== undefined && isUrgent !== '') {
+      sql += ' AND m.is_urgent = ?';
+      countSql += ' AND m.is_urgent = ?';
+      params.push(parseInt(isUrgent));
+      countParams.push(parseInt(isUrgent));
+    }
+
+    // 排序：加急的排在前面，然后按提交时间升序
+    sql += ' ORDER BY m.is_urgent DESC, m.created_at ASC LIMIT ? OFFSET ?';
     params.push(parseInt(pageSize), offset);
 
     const [records] = await pool.query(sql, params);
@@ -312,6 +344,35 @@ router.get('/submitters', authenticateToken, checkPermission('merchant_view_all'
 
   } catch (err) {
     console.error('获取提交者列表错误:', err);
+    error(res, '服务器错误', 500);
+  }
+});
+
+// 获取统计数据（包括加急数量）
+router.get('/stats', authenticateToken, async (req, res) => {
+  try {
+    const hasViewAll = req.user.permissions && req.user.permissions.includes('merchant_view_all');
+    
+    let whereClause = hasViewAll ? '1=1' : 'user_id = ?';
+    const params = hasViewAll ? [] : [req.user.id];
+
+    const [stats] = await pool.query(
+      `SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) as approved,
+        SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) as rejected,
+        SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END) as urgent,
+        SUM(CASE WHEN is_urgent = 1 THEN 1 ELSE 0 END) as urgentTotal
+       FROM merchant_registrations
+       WHERE ${whereClause}`,
+      params
+    );
+
+    success(res, stats[0]);
+
+  } catch (err) {
+    console.error('获取统计数据错误:', err);
     error(res, '服务器错误', 500);
   }
 });

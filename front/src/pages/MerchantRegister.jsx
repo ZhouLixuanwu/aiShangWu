@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { 
   Card, Form, Input, Button, Upload, message, Table, Tag, 
-  Image, Space, Modal, Descriptions, Row, Col, Tabs, Statistic
+  Image, Space, Modal, Descriptions, Row, Col, Tabs, Statistic, Radio
 } from 'antd';
 import { 
   UploadOutlined, PlusOutlined, ShopOutlined, 
   CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined,
-  UserOutlined, PhoneOutlined, FileTextOutlined, EyeOutlined
+  UserOutlined, PhoneOutlined, FileTextOutlined, EyeOutlined, MailOutlined,
+  ThunderboltOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
@@ -26,7 +27,7 @@ const MerchantRegister = () => {
   const [detailVisible, setDetailVisible] = useState(false);
   const [currentRecord, setCurrentRecord] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
-  const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0, urgent: 0 });
 
   // 获取token的辅助函数
   const getAuthHeaders = () => {
@@ -46,6 +47,7 @@ const MerchantRegister = () => {
 
   useEffect(() => {
     fetchRecords();
+    fetchStats();
   }, [pagination.current, pagination.pageSize]);
 
   const fetchRecords = async () => {
@@ -62,24 +64,29 @@ const MerchantRegister = () => {
       const list = data.data?.list || [];
       setRecords(list);
       setPagination(prev => ({ ...prev, total: data.data?.pagination?.total || 0 }));
-      
-      // 计算统计数据
-      if (list.length > 0) {
-        const pending = list.filter(r => r.status === 0).length;
-        const approved = list.filter(r => r.status === 1).length;
-        const rejected = list.filter(r => r.status === 2).length;
-        setStats({
-          total: data.data?.pagination?.total || list.length,
-          pending,
-          approved,
-          rejected
-        });
-      }
     } catch (err) {
       console.error('获取记录失败:', err);
       message.error('获取记录失败');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/merchant/stats`, {
+        headers: getAuthHeaders()
+      });
+      const data = res.data.data;
+      setStats({
+        total: data?.total || 0,
+        pending: data?.pending || 0,
+        approved: data?.approved || 0,
+        rejected: data?.rejected || 0,
+        urgent: data?.urgent || 0
+      });
+    } catch (err) {
+      console.error('获取统计数据失败:', err);
     }
   };
 
@@ -96,6 +103,8 @@ const MerchantRegister = () => {
       if (values.businessName3) formData.append('businessName3', values.businessName3);
       formData.append('contactName', values.contactName);
       formData.append('contactPhone', values.contactPhone);
+      formData.append('contactEmail', values.contactEmail);
+      formData.append('isUrgent', values.isUrgent || false);
       
       // 添加身份证正面照片
       if (fileListFront.length > 0 && fileListFront[0].originFileObj) {
@@ -119,6 +128,7 @@ const MerchantRegister = () => {
       setFileListFront([]);
       setFileListBack([]);
       fetchRecords();
+      fetchStats();
     } catch (err) {
       console.error('提交失败:', err);
       message.error(err.response?.data?.message || '提交失败');
@@ -148,7 +158,7 @@ const MerchantRegister = () => {
     setDetailVisible(true);
   };
 
-  const getStatusTag = (status) => {
+  const getStatusTag = (status, isUrgent) => {
     switch (status) {
       case 0:
         return <Tag icon={<ClockCircleOutlined />} color="processing">待审核</Tag>;
@@ -156,6 +166,8 @@ const MerchantRegister = () => {
         return <Tag icon={<CheckCircleOutlined />} color="success">已通过</Tag>;
       case 2:
         return <Tag icon={<CloseCircleOutlined />} color="error">已拒绝</Tag>;
+      case 3:
+        return <Tag icon={<ThunderboltOutlined />} color="orange">加急审核</Tag>;
       default:
         return <Tag>未知</Tag>;
     }
@@ -180,6 +192,14 @@ const MerchantRegister = () => {
       key: 'contact_phone',
       width: 130,
       responsive: ['md'],
+    },
+    {
+      title: '邮箱',
+      dataIndex: 'contact_email',
+      key: 'contact_email',
+      width: 180,
+      ellipsis: true,
+      responsive: ['lg'],
     },
     {
       title: '状态',
@@ -334,6 +354,42 @@ const MerchantRegister = () => {
                   <Row gutter={16}>
                     <Col xs={24} md={12}>
                       <Form.Item
+                        name="contactEmail"
+                        label="联系人邮箱"
+                        rules={[
+                          { required: true, message: '请输入联系人邮箱' },
+                          { type: 'email', message: '请输入正确的邮箱格式' }
+                        ]}
+                      >
+                        <Input 
+                          prefix={<MailOutlined />} 
+                          placeholder="请输入联系人邮箱" 
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <Form.Item
+                        name="isUrgent"
+                        label="是否加急"
+                        initialValue={false}
+                        rules={[{ required: true, message: '请选择是否加急' }]}
+                      >
+                        <Radio.Group>
+                          <Radio value={false}>否</Radio>
+                          <Radio value={true}>
+                            <Space>
+                              是
+                              <ThunderboltOutlined style={{ color: '#fa8c16' }} />
+                            </Space>
+                          </Radio>
+                        </Radio.Group>
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Row gutter={16}>
+                    <Col xs={24} md={12}>
+                      <Form.Item
                         label="身份证正面（人像面）"
                         extra="请上传身份证正面的清晰照片"
                       >
@@ -391,21 +447,29 @@ const MerchantRegister = () => {
             children: (
               <Card>
                 <Row gutter={16} style={{ marginBottom: 16 }}>
-                  <Col xs={8}>
+                  <Col xs={6}>
                     <Statistic 
                       title="待审核" 
                       value={stats.pending} 
                       valueStyle={{ color: '#1677ff' }}
                     />
                   </Col>
-                  <Col xs={8}>
+                  <Col xs={6}>
+                    <Statistic 
+                      title="加急审核" 
+                      value={stats.urgent} 
+                      valueStyle={{ color: '#fa8c16' }}
+                      prefix={<ThunderboltOutlined />}
+                    />
+                  </Col>
+                  <Col xs={6}>
                     <Statistic 
                       title="已通过" 
                       value={stats.approved} 
                       valueStyle={{ color: '#52c41a' }}
                     />
                   </Col>
-                  <Col xs={8}>
+                  <Col xs={6}>
                     <Statistic 
                       title="已拒绝" 
                       value={stats.rejected} 
@@ -428,7 +492,7 @@ const MerchantRegister = () => {
                     simple: isMobile
                   }}
                   size={isMobile ? 'small' : 'middle'}
-                  scroll={{ x: 600 }}
+                  scroll={{ x: 800 }}
                 />
               </Card>
             ),
@@ -457,13 +521,21 @@ const MerchantRegister = () => {
         {currentRecord && (
           <Descriptions column={isMobile ? 1 : 2} bordered size="small">
             <Descriptions.Item label="经营者手机号">{currentRecord.phone}</Descriptions.Item>
-            <Descriptions.Item label="状态">{getStatusTag(currentRecord.status)}</Descriptions.Item>
+            <Descriptions.Item label="状态">{getStatusTag(currentRecord.status, currentRecord.is_urgent)}</Descriptions.Item>
             <Descriptions.Item label="营业范围" span={2}>{currentRecord.business_scope}</Descriptions.Item>
             <Descriptions.Item label="首选名称">{currentRecord.business_name_1}</Descriptions.Item>
             <Descriptions.Item label="备选名称1">{currentRecord.business_name_2 || '-'}</Descriptions.Item>
             <Descriptions.Item label="备选名称2" span={2}>{currentRecord.business_name_3 || '-'}</Descriptions.Item>
             <Descriptions.Item label="联系人">{currentRecord.contact_name}</Descriptions.Item>
             <Descriptions.Item label="联系电话">{currentRecord.contact_phone}</Descriptions.Item>
+            <Descriptions.Item label="联系邮箱">{currentRecord.contact_email}</Descriptions.Item>
+            <Descriptions.Item label="是否加急">
+              {currentRecord.is_urgent ? (
+                <Tag icon={<ThunderboltOutlined />} color="orange">加急</Tag>
+              ) : (
+                <Tag>否</Tag>
+              )}
+            </Descriptions.Item>
             <Descriptions.Item label="提交时间" span={2}>
               {dayjs(currentRecord.created_at).format('YYYY-MM-DD HH:mm:ss')}
             </Descriptions.Item>

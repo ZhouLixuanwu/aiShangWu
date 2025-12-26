@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { 
   Card, Table, Tag, Space, Button, Input, Select, Modal, 
-  Descriptions, Image, message, Popconfirm, Row, Col, Statistic
+  Descriptions, Image, message, Popconfirm, Row, Col, Statistic, Tabs
 } from 'antd';
 import { 
   ShopOutlined, SearchOutlined, EyeOutlined, 
   CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined,
-  DeleteOutlined, ReloadOutlined, FilterOutlined
+  DeleteOutlined, ReloadOutlined, FilterOutlined, ThunderboltOutlined, MailOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
@@ -17,14 +17,15 @@ const MerchantList = () => {
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
-  const [filters, setFilters] = useState({ keyword: '', status: undefined, userId: undefined });
+  const [filters, setFilters] = useState({ keyword: '', status: undefined, userId: undefined, isUrgent: undefined });
   const [submitters, setSubmitters] = useState([]);
   const [detailVisible, setDetailVisible] = useState(false);
   const [currentRecord, setCurrentRecord] = useState(null);
   const [statusModalVisible, setStatusModalVisible] = useState(false);
   const [statusForm, setStatusForm] = useState({ status: 0, remark: '' });
   const [isMobile, setIsMobile] = useState(false);
-  const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0, urgent: 0 });
+  const [activeTab, setActiveTab] = useState('all');
 
   // 获取token的辅助函数
   const getAuthHeaders = () => {
@@ -56,7 +57,8 @@ const MerchantList = () => {
           pageSize: pagination.pageSize,
           keyword: filters.keyword || undefined,
           status: filters.status,
-          userId: filters.userId
+          userId: filters.userId,
+          isUrgent: filters.isUrgent
         },
         headers: getAuthHeaders()
       });
@@ -65,26 +67,31 @@ const MerchantList = () => {
       setRecords(list);
       setPagination(prev => ({ ...prev, total: data.data?.pagination?.total || 0 }));
       
-      // 获取全量统计（简单处理，实际可增加后端接口）
-      const allRes = await axios.get(`${API_BASE_URL}/merchant/all`, {
-        params: { pageSize: 1000 },
-        headers: getAuthHeaders()
-      });
-      const allList = allRes.data.data?.list || [];
-      const pending = allList.filter(r => r.status === 0).length;
-      const approved = allList.filter(r => r.status === 1).length;
-      const rejected = allList.filter(r => r.status === 2).length;
-      setStats({
-        total: allList.length,
-        pending,
-        approved,
-        rejected
-      });
+      // 获取统计数据
+      fetchStats();
     } catch (err) {
       console.error('获取记录失败:', err);
       message.error('获取记录失败');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/merchant/stats`, {
+        headers: getAuthHeaders()
+      });
+      const data = res.data.data;
+      setStats({
+        total: data?.total || 0,
+        pending: data?.pending || 0,
+        approved: data?.approved || 0,
+        rejected: data?.rejected || 0,
+        urgent: data?.urgent || 0
+      });
+    } catch (err) {
+      console.error('获取统计数据失败:', err);
     }
   };
 
@@ -147,6 +154,8 @@ const MerchantList = () => {
         return <Tag icon={<CheckCircleOutlined />} color="success">已通过</Tag>;
       case 2:
         return <Tag icon={<CloseCircleOutlined />} color="error">已拒绝</Tag>;
+      case 3:
+        return <Tag icon={<ThunderboltOutlined />} color="orange">加急审核</Tag>;
       default:
         return <Tag>未知</Tag>;
     }
@@ -165,6 +174,7 @@ const MerchantList = () => {
       dataIndex: 'business_name_1',
       key: 'business_name_1',
       ellipsis: true,
+      width: 230,
     },
     {
       title: '联系人',
@@ -178,6 +188,14 @@ const MerchantList = () => {
       key: 'contact_phone',
       width: 130,
       responsive: ['md'],
+    },
+    {
+      title: '邮箱',
+      dataIndex: 'contact_email',
+      key: 'contact_email',
+      width: 180,
+      ellipsis: true,
+      responsive: ['xl'],
     },
     {
       title: '经营者电话',
@@ -227,54 +245,15 @@ const MerchantList = () => {
     },
   ];
 
-  return (
-    <div className="page-card">
-      <div className="page-card-header">
-        <span className="page-card-title">
-          <ShopOutlined style={{ marginRight: 8 }} />
-          办理营业执照管理
-        </span>
-      </div>
-
-      {/* 统计卡片 */}
-      <Card style={{ marginBottom: 16 }}>
-        <Row gutter={16}>
-          <Col xs={6}>
-            <Statistic 
-              title="总提交" 
-              value={stats.total} 
-            />
-          </Col>
-          <Col xs={6}>
-            <Statistic 
-              title="待审核" 
-              value={stats.pending} 
-              valueStyle={{ color: '#1677ff' }}
-            />
-          </Col>
-          <Col xs={6}>
-            <Statistic 
-              title="已通过" 
-              value={stats.approved} 
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Col>
-          <Col xs={6}>
-            <Statistic 
-              title="已拒绝" 
-              value={stats.rejected} 
-              valueStyle={{ color: '#ff4d4f' }}
-            />
-          </Col>
-        </Row>
-      </Card>
-
+  // 渲染筛选和表格内容
+  const renderContent = () => (
+    <>
       {/* 筛选区域 */}
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={[16, 16]} align="middle">
           <Col xs={24} sm={8} md={6}>
             <Input
-              placeholder="搜索名称/电话/联系人"
+              placeholder="搜索名称/电话/联系人/邮箱"
               prefix={<SearchOutlined />}
               value={filters.keyword}
               onChange={(e) => setFilters(prev => ({ ...prev, keyword: e.target.value }))}
@@ -292,6 +271,7 @@ const MerchantList = () => {
                 { value: 0, label: '待审核' },
                 { value: 1, label: '已通过' },
                 { value: 2, label: '已拒绝' },
+                { value: 3, label: '加急审核' },
               ]}
             />
           </Col>
@@ -313,7 +293,7 @@ const MerchantList = () => {
               <Button 
                 icon={<ReloadOutlined />} 
                 onClick={() => {
-                  setFilters({ keyword: '', status: undefined, userId: undefined });
+                  setFilters({ keyword: '', status: undefined, userId: undefined, isUrgent: activeTab === 'urgent' ? 1 : undefined });
                   setPagination(prev => ({ ...prev, current: 1 }));
                 }}
               >
@@ -342,14 +322,105 @@ const MerchantList = () => {
             ...pagination,
             onChange: (page, pageSize) => setPagination(prev => ({ ...prev, current: page, pageSize })),
             showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条`,
+            showTotal: (total) => `共 ${total} 条${activeTab === 'urgent' ? '加急记录' : ''}`,
             size: isMobile ? 'small' : 'default',
             simple: isMobile
           }}
           size={isMobile ? 'small' : 'middle'}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1100 }}
         />
       </Card>
+    </>
+  );
+
+  return (
+    <div className="page-card">
+      <div className="page-card-header">
+        <span className="page-card-title">
+          <ShopOutlined style={{ marginRight: 8 }} />
+          办理营业执照管理
+        </span>
+      </div>
+
+      {/* 统计卡片 */}
+      <Card style={{ marginBottom: 16 }}>
+        <Row gutter={16}>
+          <Col xs={4}>
+            <Statistic 
+              title="总提交" 
+              value={stats.total} 
+            />
+          </Col>
+          <Col xs={5}>
+            <Statistic 
+              title="待审核" 
+              value={stats.pending} 
+              valueStyle={{ color: '#1677ff' }}
+            />
+          </Col>
+          <Col xs={5}>
+            <Statistic 
+              title="加急审核" 
+              value={stats.urgent} 
+              valueStyle={{ color: '#fa8c16' }}
+              prefix={<ThunderboltOutlined />}
+            />
+          </Col>
+          <Col xs={5}>
+            <Statistic 
+              title="已通过" 
+              value={stats.approved} 
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Col>
+          <Col xs={5}>
+            <Statistic 
+              title="已拒绝" 
+              value={stats.rejected} 
+              valueStyle={{ color: '#ff4d4f' }}
+            />
+          </Col>
+        </Row>
+      </Card>
+
+      {/* Tabs 区分全部和加急 */}
+      <Tabs
+        activeKey={activeTab}
+        onChange={(key) => {
+          setActiveTab(key);
+          if (key === 'urgent') {
+            setFilters(prev => ({ ...prev, isUrgent: 1 }));
+          } else {
+            setFilters(prev => ({ ...prev, isUrgent: undefined }));
+          }
+          setPagination(prev => ({ ...prev, current: 1 }));
+        }}
+        items={[
+          {
+            key: 'all',
+            label: `全部记录 (${stats.total})`,
+            children: renderContent(),
+          },
+          {
+            key: 'urgent',
+            label: (
+              <span>
+                <ThunderboltOutlined style={{ color: '#fa8c16', marginRight: 4 }} />
+                加急审核 ({stats.urgent})
+              </span>
+            ),
+            children: (
+              <>
+                <div style={{ marginBottom: 16, padding: '8px 12px', background: '#fff7e6', borderRadius: 4, border: '1px solid #ffd591' }}>
+                  <ThunderboltOutlined style={{ color: '#fa8c16', marginRight: 8 }} />
+                  加急审核记录（按提交时间升序排列，优先处理）
+                </div>
+                {renderContent()}
+              </>
+            ),
+          },
+        ]}
+      />
 
       {/* 详情弹窗 */}
       <Modal
@@ -380,6 +451,14 @@ const MerchantList = () => {
             <Descriptions.Item label="备选名称2">{currentRecord.business_name_3 || '-'}</Descriptions.Item>
             <Descriptions.Item label="联系人">{currentRecord.contact_name}</Descriptions.Item>
             <Descriptions.Item label="联系电话">{currentRecord.contact_phone}</Descriptions.Item>
+            <Descriptions.Item label="联系邮箱">{currentRecord.contact_email}</Descriptions.Item>
+            <Descriptions.Item label="是否加急">
+              {currentRecord.is_urgent ? (
+                <Tag icon={<ThunderboltOutlined />} color="orange">加急</Tag>
+              ) : (
+                <Tag>否</Tag>
+              )}
+            </Descriptions.Item>
             <Descriptions.Item label="提交时间" span={2}>
               {dayjs(currentRecord.created_at).format('YYYY-MM-DD HH:mm:ss')}
             </Descriptions.Item>
@@ -437,6 +516,7 @@ const MerchantList = () => {
               { value: 0, label: '待审核' },
               { value: 1, label: '通过' },
               { value: 2, label: '拒绝' },
+              { value: 3, label: '加急审核' },
             ]}
           />
         </div>
